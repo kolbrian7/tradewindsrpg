@@ -1063,7 +1063,7 @@ const App: React.FC = () => {
                                 <button 
                                     key={b.id} 
                                     onMouseDown={(e) => { if (isEditMode) { e.preventDefault(); setDraggingBuildingId(b.id); } }} 
-                                    onTouchStart={(e) => { if (isEditMode) { setDraggingBuildingId(b.id); } }}
+                                    onTouchStart={() => { if (isEditMode) { setDraggingBuildingId(b.id); } }}
                                     onClick={() => !isEditMode && setTab(b.tab)} 
                                     className={`absolute group flex flex-col items-center ${isEditMode ? 'cursor-move' : ''}`} 
                                     style={{ left: `${b.x}%`, top: `${b.y}%`, transform: `translate(-50%, -50%) scale(${b.scale || 1})` }}
@@ -1128,7 +1128,7 @@ const App: React.FC = () => {
                             <div key={p.id} className="absolute z-10" style={{ left: `${p.x}%`, top: `${p.y}%`, transform: 'translate(-50%, -50%)' }}>
                                 <button 
                                     onMouseDown={(e) => { if (isEditMode) { e.preventDefault(); setDraggingPortId(p.id); } }} 
-                                    onTouchStart={(e) => { if (isEditMode) { setDraggingPortId(p.id); } }}
+                                    onTouchStart={() => { if (isEditMode) { setDraggingPortId(p.id); } }}
                                     disabled={!isEditMode && (isTraveling || isCurrent)} 
                                     onClick={() => !isEditMode && handleTravel(p.id)} 
                                     className={`w-12 h-16 flex flex-col items-center transition-all ${isCurrent ? 'scale-125' : 'opacity-80 hover:opacity-100 hover:scale-110'}`}
