@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+/* Custom Scrollbar Styles for the game */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 158, 11, 0.4) rgba(15, 23, 42, 0.6);
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch; /* Smooth inertial scrolling on iOS/Webkit */
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  height: 6px; /* Horizontal scrollbar thickness */
+  width: 6px;  /* Vertical scrollbar thickness */
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6); /* Dark slate track */
+  border-radius: 9999px;
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.5);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(245, 158, 11, 0.45); /* Gold/amber thumb */
+  border-radius: 9999px;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 158, 11, 0.85); /* Brighter gold/amber on hover */
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+}
+
+/* Specific to horizontal custom scrollbar position to give it some padding at the bottom */
+.custom-scrollbar-horizontal::-webkit-scrollbar {
+  height: 8px;
+}
+
