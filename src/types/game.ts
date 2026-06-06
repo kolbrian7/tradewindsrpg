@@ -20,7 +20,8 @@ export interface Port {
 export interface Ship {
   id: string;
   name: string;
-  shipClass: 'Sloop' | 'Brigantine' | 'Galleon' | 'Frigate' | 'Man-O-War';
+  shipClass: string;
+  tier: number;
   hullHealth: { current: number; max: number };
   cargoCapacity: number;
   speed: number;
@@ -36,6 +37,8 @@ export interface Player {
   cargo: Record<CommodityType, number>;
   currentPortId: string;
   gameDay: number;
+  hasReadPrologue: boolean;
+  hasWonGame: boolean;
 }
 
 export interface Rumor {

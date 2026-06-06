@@ -27,7 +27,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fleet: [{
       id: 'starter-sloop',
       name: 'The Salty Dog',
-      shipClass: 'Sloop',
+      shipClass: 'Schooner',
+      tier: 1,
       hullHealth: { current: 15, max: 20 },
       cargoCapacity: 10,
       speed: 5,
@@ -37,6 +38,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     cargo: Object.fromEntries(COMMODITIES.map(t => [t, 0])) as Record<CommodityType, number>,
     currentPortId: 'port-royal',
     gameDay: 1,
+    hasReadPrologue: false,
+    hasWonGame: false,
   }));
 
   const [ports, setPorts] = useState<Port[]>(() => [

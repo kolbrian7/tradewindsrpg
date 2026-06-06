@@ -1,9 +1,29 @@
-const CACHE_NAME = 'tradewinds-cache-v1';
+const CACHE_NAME = 'tradewinds-cache-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/favicon.svg',
-  '/manifest.webmanifest'
+  '/manifest.webmanifest',
+  '/assets/New Lands/Athens.webp',
+  '/assets/New Lands/Barcellona.webp',
+  '/assets/New Lands/Crete.webp',
+  '/assets/New Lands/Egypt.webp',
+  '/assets/New Lands/Nice.webp',
+  '/assets/New Lands/Rome.webp',
+  '/assets/New Lands/Sardinia.webp',
+  '/assets/New Lands/Tunisia.webp',
+  '/assets/New Lands/Venice.webp',
+  '/assets/New Lands/World Map.webp',
+  '/assets/Boat/Boat 1.webp',
+  '/assets/Boat/Boat 2.webp',
+  '/assets/Boat/Boat 3.webp',
+  '/assets/Boat/Boat 4.webp',
+  '/assets/Market Transparent.webp',
+  '/assets/Transparent Shipyard.webp',
+  '/assets/proper cantina.webp',
+  '/assets/easy remove boat.webp',
+  '/assets/map pin.webp',
+  '/assets/telescope.webp'
 ];
 
 // Install event - cache core shell assets
