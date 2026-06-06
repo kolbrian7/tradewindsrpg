@@ -61,6 +61,9 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (!url.protocol.startsWith('http')) return;
 
+  // Bypass service worker for video files to avoid 206 Range Request issues
+  if (url.pathname.endsWith('.mp4')) return;
+
   event.respondWith(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.match(event.request).then((cachedResponse) => {
