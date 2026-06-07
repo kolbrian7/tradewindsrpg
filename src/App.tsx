@@ -506,7 +506,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [battle, setBattle] = useState<BattleState | null>(null);
 
-  const [activeMinigame, setActiveMinigame] = useState<string | null>('arm');
+  const [activeMinigame, setActiveMinigame] = useState<string | null>(null);
 
   const [minigameResult, setMinigameResult] = useState<any>(null);
 
@@ -1322,7 +1322,7 @@ const AnimatedMarker: React.FC<{ type: string; label: string }> = ({ type }) => 
 
 const App: React.FC = () => {
 
-  const [tab, setTab] = useState('cantina');
+  const [tab, setTab] = useState('port');
 
   const changeTab = (newTab: string) => {
 
