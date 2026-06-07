@@ -212,15 +212,15 @@ const getUpgradesForTier = (tier: number): Upgrade[] => {
 
 };
 
-const getShipSizeClasses = (shipClass: string): string => {
+const getShipSizeStyle = (shipClass: string): React.CSSProperties => {
 
-  if (shipClass === 'Schooner' || shipClass === 'Sloop') return 'w-20 h-20';
+  if (shipClass === 'Schooner' || shipClass === 'Sloop') return { width: '55px', height: '55px' };
 
-  if (shipClass === 'Brigantine') return 'w-24 h-24';
+  if (shipClass === 'Brigantine') return { width: '75px', height: '75px' };
 
-  if (shipClass === 'Frigate') return 'w-28 h-28';
+  if (shipClass === 'Frigate') return { width: '95px', height: '95px' };
 
-  return 'w-32 h-32'; // Galleon / flagship
+  return { width: '120px', height: '120px' }; // Galleon / flagship
 
 };
 
@@ -3998,7 +3998,7 @@ const App: React.FC = () => {
 
                                  src={flagshipImage} 
 
-                                 className={`${getShipSizeClasses(flagship.shipClass)} object-contain scale-x-[-1] mb-2`} 
+                                 className="object-contain scale-x-[-1] mb-2" style={getShipSizeStyle(flagship.shipClass)} 
 
                                  alt="Your Ship" 
 
@@ -4048,7 +4048,7 @@ const App: React.FC = () => {
 
                                  src={getShipImageByClass(battle.enemyShip?.shipClass || 'Schooner')} 
 
-                                 className={`${getShipSizeClasses(battle.enemyShip?.shipClass || 'Schooner')} object-contain brightness-75 sepia-[0.3] hue-rotate-[320deg] mb-2`} 
+                                 className="object-contain brightness-75 sepia-[0.3] hue-rotate-[320deg] mb-2" style={getShipSizeStyle(battle.enemyShip?.shipClass || 'Schooner')} 
 
                                  alt="Enemy Ship" 
 
