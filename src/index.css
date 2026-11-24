@@ -1,176 +1,266 @@
 @import "tailwindcss";
 
-/* Custom Scrollbar Styles for the game */
+:root {
+  --wood-dark: #1d120b;
+  --wood-mid: #2b1a10;
+  --brass: #c8963e;
+  --brass-bright: #e8be63;
+  --parchment-hi: #f8eed8;
+  --parchment-lo: #e6d1a8;
+  --ink: #2b1d12;
+  --ink-muted: #654b32;
+  --sea-deep: #0d1d29;
+  --sea-teal: #177a87;
+  --wax-red: #a72d22;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  color: #f6ecd6;
+}
+
+.font-display {
+  font-family: 'Cinzel', Georgia, 'Palatino Linotype', serif;
+}
+
+/* Warm Mediterranean Storybook Surfaces */
+.parchment {
+  background: linear-gradient(175deg, var(--parchment-hi) 0%, #f1e1c0 55%, var(--parchment-lo) 100%);
+  color: var(--ink);
+  border: 1.5px solid #bfa065;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 252, 240, 0.85),
+    inset 0 -10px 24px rgba(139, 98, 43, 0.12),
+    0 6px 18px rgba(14, 9, 5, 0.35);
+}
+
+.parchment-card {
+  background: linear-gradient(175deg, #fbf3e2 0%, #eedbb6 100%);
+  color: var(--ink);
+  border: 1.5px solid #c6a569;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 3px 10px rgba(22, 13, 7, 0.22);
+}
+
+.wood-bar {
+  background: linear-gradient(180deg, #2d1c12 0%, #1c110a 100%);
+  border-color: rgba(200, 150, 62, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 224, 160, 0.14), 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.wood-panel {
+  background: linear-gradient(180deg, #332014 0%, #21140c 100%);
+  border: 1.5px solid rgba(200, 150, 62, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 226, 165, 0.14), 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+
+.btn-brass {
+  background: linear-gradient(180deg, #eec468 0%, #d29732 100%);
+  color: #1f130a;
+  border: 1px solid #9c6a18;
+  box-shadow: inset 0 1px 0 rgba(255, 248, 220, 0.65), 0 3px 8px rgba(0, 0, 0, 0.35);
+}
+.btn-brass:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+.btn-brass:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn-crimson {
+  background: linear-gradient(180deg, #c64134 0%, #92231a 100%);
+  color: #fdf6e9;
+  border: 1px solid #6b1610;
+  box-shadow: inset 0 1px 0 rgba(255, 195, 185, 0.35), 0 3px 8px rgba(0, 0, 0, 0.35);
+}
+.btn-crimson:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+.btn-crimson:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn-teal {
+  background: linear-gradient(180deg, #1d909e 0%, #115f6a 100%);
+  color: #f6f3e8;
+  border: 1px solid #0b444d;
+  box-shadow: inset 0 1px 0 rgba(190, 248, 255, 0.35), 0 3px 8px rgba(0, 0, 0, 0.35);
+}
+.btn-teal:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+.btn-teal:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Custom Scrollbar */
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(245, 158, 11, 0.4) rgba(15, 23, 42, 0.6);
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch; /* Smooth inertial scrolling on iOS/Webkit */
+  scrollbar-color: rgba(200, 150, 62, 0.55) rgba(29, 18, 11, 0.4);
+  -webkit-overflow-scrolling: touch;
 }
-
-.custom-scrollbar::-webkit-scrollbar {
-  height: 6px; /* Horizontal scrollbar thickness */
-  width: 6px;  /* Vertical scrollbar thickness */
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6); /* Dark slate track */
-  border-radius: 9999px;
-  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.5);
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(245, 158, 11, 0.45); /* Gold/amber thumb */
-  border-radius: 9999px;
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  transition: background-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(245, 158, 11, 0.85); /* Brighter gold/amber on hover */
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
-}
-
-/* Specific to horizontal custom scrollbar position to give it some padding at the bottom */
-.custom-scrollbar-horizontal::-webkit-scrollbar {
-  height: 8px;
-}
-
-/* Game animations */
-@keyframes shipFloat { 
-    0%, 100% { transform: translateY(0); } 
-    33% { transform: translateY(-4px); } 
-    66% { transform: translateY(2px); } 
-}
-.animate-ship-float { animation: shipFloat 4s ease-in-out infinite; }
-@keyframes markerFloat {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
-}
-.animate-marker-float { animation: markerFloat 3s ease-in-out infinite; }
-@keyframes slowSpin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-.animate-slow-spin { animation: slowSpin 120s linear infinite; }
-@keyframes shimmer {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
-}
-.animate-shimmer { animation: shimmer 2s infinite; }
-@keyframes kenBurns {
-    0% { transform: scale(1.02) translate(0, 0); }
-    50% { transform: scale(1.08) translate(-1.5%, -0.5%); }
-    100% { transform: scale(1.02) translate(0, 0); }
-}
-.animate-ken-burns { 
-    animation: kenBurns 40s ease-in-out infinite; 
-    transform-origin: center center;
-}
-/* Cannonball flight path - 3D arc right */
-@keyframes cannonballRight {
-    0% { left: 18%; top: 40%; transform: scale(0.9); opacity: 1; }
-    50% { top: 10%; transform: scale(1.6); }
-    100% { left: 78%; top: 40%; transform: scale(0.9); opacity: 0; }
-}
-.animate-cannonball-right {
-    animation: cannonballRight 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
-}
-/* Cannonball flight path - 3D arc left */
-@keyframes cannonballLeft {
-    0% { left: 78%; top: 40%; transform: scale(0.9); opacity: 1; }
-    50% { top: 10%; transform: scale(1.6); }
-    100% { left: 18%; top: 40%; transform: scale(0.9); opacity: 0; }
-}
-.animate-cannonball-left {
-    animation: cannonballLeft 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
-}
-/* Ship impact shake */
-@keyframes shake {
-    0%, 100% { transform: translate(0, 0) rotate(0deg); }
-    20%, 60% { transform: translate(-6px, 3px) rotate(-2deg); }
-    40%, 80% { transform: translate(6px, -3px) rotate(2deg); }
-}
-.animate-shake {
-    animation: shake 0.35s ease-in-out;
-}
-/* Sailing ship rocking wobble - slow gentle ocean swell */
-@keyframes shipWobble {
-    0%, 100% { transform: translateY(0) rotate(0.4deg); }
-    50% { transform: translateY(-2px) rotate(-0.4deg); }
-}
-.animate-ship-wobble { animation: shipWobble 3s ease-in-out infinite; }
-/* Wake trail bubble fade */
-@keyframes wakeFade {
-    0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0.55; }
-    100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
-}
-.animate-wake-fade { animation: wakeFade 1s ease-out forwards; }
-/* Red ambush screen flash */
-@keyframes flashShake {
-    0% { opacity: 0; }
-    10% { opacity: 1; }
-    100% { opacity: 0; }
-}
-.animate-flash-shake { animation: flashShake 0.6s ease-out forwards; }
-/* Juicy hit explosion */
-@keyframes explosion {
-    0% { transform: scale(0.2); opacity: 1; filter: brightness(1.6); }
-    50% { transform: scale(1.3); opacity: 0.95; filter: brightness(1.3) drop-shadow(0 0 10px rgba(249, 115, 22, 0.8)); }
-    100% { transform: scale(1.7); opacity: 0; filter: blur(3px); }
-}
-.animate-explosion {
-    animation: explosion 0.45s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
-}
-/* Spark trajectory animation */
-@keyframes spark {
-    0% { transform: translate(-50%, -50%) translate(0, 0) scale(1); opacity: 1; }
-    100% { transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
-}
-.animate-spark {
-    animation: spark 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
-}
-/* Ocean wave animations for combat background */
-@keyframes waveMove {
-    0% { transform: translateX(0) translateY(0) scaleY(1); }
-    50% { transform: translateX(-15px) translateY(2.5px) scaleY(1.05); }
-    100% { transform: translateX(0) translateY(0) scaleY(1); }
-}
-.animate-wave-slow { animation: waveMove 10s ease-in-out infinite; }
-.animate-wave-medium { animation: waveMove 7s ease-in-out infinite; }
-.animate-wave-fast { animation: waveMove 5s ease-in-out infinite; }
-
-/* Screen transitions */
-@keyframes animFade { from { opacity: 0; } to { opacity: 1; } }
-.anim-fade { animation: animFade 0.3s ease-out; }
-@keyframes animRise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-.anim-rise { animation: animRise 0.3s ease-out; }
-
-/* Small gold coin shown in front of every price */
-.coin {
-  display: inline-block;
-  width: 0.72em;
-  height: 0.72em;
-  border-radius: 9999px;
-  background: radial-gradient(circle at 35% 30%, #fff2a3, #f59e0b 55%, #92400e);
-  box-shadow: 0 0 0 1px rgba(146, 64, 14, 0.9);
-  flex-shrink: 0;
-}
+.custom-scrollbar::-webkit-scrollbar { height: 6px; width: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: rgba(29, 18, 11, 0.35); border-radius: 9999px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(200, 150, 62, 0.55); border-radius: 9999px; }
 
 .no-scrollbar { scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
+/* Ship & Water Animations */
+@keyframes shipBob {
+  0%, 100% { transform: translateY(0px) rotate(-0.8deg); }
+  50% { transform: translateY(-4px) rotate(1deg); }
+}
+.animate-ship-bob { animation: shipBob 3.8s ease-in-out infinite; }
+
+@keyframes sailBillow {
+  0%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(1.03); }
+}
+.animate-sail-billow { animation: sailBillow 3.2s ease-in-out infinite; transform-origin: center; }
+
+@keyframes pennantWave {
+  0%, 100% { transform: skewY(0deg) scaleX(1); }
+  50% { transform: skewY(-5deg) scaleX(0.94); }
+}
+.animate-pennant { animation: pennantWave 1.6s ease-in-out infinite; transform-origin: left center; }
+
+@keyframes waterRipple {
+  0%, 100% { transform: scaleX(0.95); opacity: 0.55; }
+  50% { transform: scaleX(1.08); opacity: 0.85; }
+}
+.animate-water-ripple { animation: waterRipple 2.8s ease-in-out infinite; transform-origin: center; }
+
+@keyframes markerFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+.animate-marker-float { animation: markerFloat 3s ease-in-out infinite; }
+
+@keyframes slowSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.animate-slow-spin { animation: slowSpin 90s linear infinite; }
+
+@keyframes wakeFade {
+  0% { transform: translate(-50%, -50%) scale(0.35); opacity: 0.75; }
+  100% { transform: translate(-50%, -50%) scale(2.1); opacity: 0; }
+}
+.animate-wake-fade { animation: wakeFade 1.1s ease-out forwards; }
+
+/* Battle Stage Animations */
+@keyframes waveDrift1 {
+  0%, 100% { transform: translateX(0px) translateY(0px); }
+  50% { transform: translateX(-18px) translateY(3px); }
+}
+@keyframes waveDrift2 {
+  0%, 100% { transform: translateX(-8px) translateY(2px); }
+  50% { transform: translateX(14px) translateY(-2px); }
+}
+.animate-wave-1 { animation: waveDrift1 7s ease-in-out infinite; }
+.animate-wave-2 { animation: waveDrift2 5s ease-in-out infinite; }
+
+@keyframes cloudDrift {
+  0%, 100% { transform: translateX(0px); }
+  50% { transform: translateX(22px); }
+}
+.animate-cloud-drift { animation: cloudDrift 28s ease-in-out infinite; }
+
+@keyframes cannonballRight {
+  0% { left: 22%; top: 52%; transform: scale(0.85); opacity: 1; }
+  50% { top: 20%; transform: scale(1.45); opacity: 1; }
+  100% { left: 76%; top: 52%; transform: scale(0.95); opacity: 0; }
+}
+.animate-cannonball-right { animation: cannonballRight 0.55s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
+
+@keyframes cannonballLeft {
+  0% { left: 76%; top: 52%; transform: scale(0.85); opacity: 1; }
+  50% { top: 20%; transform: scale(1.45); opacity: 1; }
+  100% { left: 22%; top: 52%; transform: scale(0.95); opacity: 0; }
+}
+.animate-cannonball-left { animation: cannonballLeft 0.55s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
+
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  20%, 60% { transform: translate(-6px, 2px) rotate(-2deg); }
+  40%, 80% { transform: translate(6px, -2px) rotate(2deg); }
+}
+.animate-shake { animation: shake 0.36s ease-in-out; }
+
+@keyframes explosion {
+  0% { transform: scale(0.2); opacity: 1; }
+  55% { transform: scale(1.3); opacity: 0.95; }
+  100% { transform: scale(1.75); opacity: 0; }
+}
+.animate-explosion { animation: explosion 0.48s ease-out forwards; }
+
+@keyframes splashUp {
+  0% { transform: translateY(10px) scale(0.4); opacity: 0.95; }
+  50% { transform: translateY(-16px) scale(1.15); opacity: 0.9; }
+  100% { transform: translateY(6px) scale(1.4); opacity: 0; }
+}
+.animate-splash { animation: splashUp 0.65s ease-out forwards; }
+
+@keyframes spark {
+  0% { transform: translate(-50%, -50%) translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+}
+.animate-spark { animation: spark 0.5s ease-out forwards; }
+
+@keyframes flashShake {
+  0% { opacity: 0; }
+  15% { opacity: 0.85; }
+  100% { opacity: 0; }
+}
+.animate-flash-shake { animation: flashShake 0.6s ease-out forwards; }
+
+/* Cantina Pub Game Animations */
+@keyframes diceTumble {
+  0% { transform: translateY(-18px) rotate(-180deg) scale(0.75); opacity: 0.4; }
+  45% { transform: translateY(4px) rotate(25deg) scale(1.08); opacity: 1; }
+  75% { transform: translateY(-5px) rotate(-10deg) scale(0.98); }
+  100% { transform: translateY(0) rotate(0deg) scale(1); opacity: 1; }
+}
+.animate-dice-tumble { animation: diceTumble 0.52s cubic-bezier(0.22, 1, 0.36, 1); }
+
+@keyframes coinFlipSpin {
+  0% { transform: translateY(0) rotateX(0deg) scale(1); }
+  35% { transform: translateY(-58px) rotateX(720deg) scale(1.22); }
+  70% { transform: translateY(-12px) rotateX(1260deg) scale(1.05); }
+  85% { transform: translateY(-6px) rotateX(1400deg) scale(1.02); }
+  100% { transform: translateY(0) rotateX(1440deg) scale(1); }
+}
+.animate-coin-flip { animation: coinFlipSpin 0.95s cubic-bezier(0.22, 1, 0.36, 1); }
+
+@keyframes animFade { from { opacity: 0; } to { opacity: 1; } }
+.anim-fade { animation: animFade 0.25s ease-out; }
+@keyframes animRise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.anim-rise { animation: animRise 0.28s ease-out; }
+
+@keyframes routeDash {
+  to { stroke-dashoffset: -12; }
+}
+.animate-route-dash { animation: routeDash 1.2s linear infinite; }
+
 .menu-btn {
   display: block;
   width: 100%;
-  background: #1e293b;
-  color: #e2e8f0;
-  padding: 0.8rem 1rem;
+  background: linear-gradient(180deg, #f7ecd4 0%, #e7d1a8 100%);
+  color: #2b1d12;
+  border: 1px solid #bfa065;
+  padding: 0.78rem 1rem;
   border-radius: 0.75rem;
   font-size: 0.85rem;
   font-weight: 700;
   text-align: left;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
-.menu-btn:active { background: #334155; }
+.menu-btn:active { filter: brightness(0.95); }
 
-html, body, #root { height: 100%; background: #020617; overscroll-behavior: none; }
+html, body, #root {
+  height: 100%;
+  background: #0d1d29;
+  overscroll-behavior: none;
+}

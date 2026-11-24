@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { audioManager } from '../engine/AudioManager';
+import { IconCompass } from './Icons';
 
 interface PrologueStoryboardProps {
   onComplete: () => void;
@@ -100,7 +101,7 @@ export const PrologueStoryboard: React.FC<PrologueStoryboardProps> = ({ onComple
           className="absolute inset-0 bg-slate-950/95 flex flex-col justify-center items-center z-50 cursor-pointer p-6 text-center animate-in fade-in duration-300"
         >
           <div className="w-20 h-20 rounded-full border border-amber-500/30 mb-8 flex items-center justify-center bg-amber-500/5 shadow-2xl shadow-amber-500/5 relative animate-pulse">
-            <span className="text-3xl text-amber-400">🧭</span>
+            <IconCompass className="w-9 h-9 text-amber-400" />
           </div>
 
           <h1 className="text-xl sm:text-2xl font-serif text-amber-400 font-black tracking-widest uppercase italic mb-2">
