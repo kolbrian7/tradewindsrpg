@@ -47,10 +47,16 @@ export const PrologueStoryboard: React.FC<PrologueStoryboardProps> = ({ onComple
       '/assets/New Lands/Egypt.webp',
       '/assets/New Lands/Nice.webp',
       '/assets/New Lands/Sardinia.webp',
-      '/assets/Boat/Boat 1.webp',
-      '/assets/Boat/Boat 2.webp',
-      '/assets/Boat/Boat 3.webp',
-      '/assets/Boat/Boat 4.webp',
+      '/assets/ships/ship_t1.webp',
+      '/assets/ships/ship_t2.webp',
+      '/assets/ships/ship_t3.webp',
+      '/assets/ships/ship_t4.webp',
+      '/assets/ships/ship_pirate.webp',
+      '/assets/ships/ship_syndicate.webp',
+      '/assets/cantina/dice_table.webp',
+      '/assets/cantina/coin_table.webp',
+      '/assets/cantina/coin_sun.webp',
+      '/assets/cantina/coin_anchor.webp',
     ];
 
     imagesToPreload.forEach((src) => {

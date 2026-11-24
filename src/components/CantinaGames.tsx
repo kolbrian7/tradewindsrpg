@@ -20,36 +20,62 @@ const GAME_TITLES: Record<PubGameType, string> = {
   arm: 'Arm Wrestling',
 };
 
-const PIP_POSITIONS: Record<number, Array<[number, number]>> = {
-  1: [[50, 50]],
-  2: [[28, 28], [72, 72]],
-  3: [[28, 28], [50, 50], [72, 72]],
-  4: [[28, 28], [72, 28], [28, 72], [72, 72]],
-  5: [[28, 28], [72, 28], [50, 50], [28, 72], [72, 72]],
-  6: [[28, 25], [72, 25], [28, 50], [72, 50], [28, 75], [72, 75]],
+// Standard 3x3 grid pip positions for faces 1-6
+const PIP_CELLS: Record<number, number[]> = {
+  1: [4],
+  2: [0, 8],
+  3: [0, 4, 8],
+  4: [0, 2, 6, 8],
+  5: [0, 2, 4, 6, 8],
+  6: [0, 2, 3, 5, 6, 8],
 };
 
-const DieFace: React.FC<{ value: number; tone?: 'ivory' | 'crimson'; rolling?: boolean }> = ({
+// Rotations that orient the CSS 3D cube so `value` faces forward
+const FACE_TRANSFORMS: Record<number, string> = {
+  1: 'rotateX(0deg) rotateY(0deg)',
+  2: 'rotateX(-90deg) rotateY(0deg)',
+  3: 'rotateX(0deg) rotateY(-90deg)',
+  4: 'rotateX(0deg) rotateY(90deg)',
+  5: 'rotateX(90deg) rotateY(0deg)',
+  6: 'rotateX(180deg) rotateY(0deg)',
+};
+
+const CUBE_FACES: Array<{ val: number; transform: string }> = [
+  { val: 1, transform: 'translateZ(26px)' },
+  { val: 6, transform: 'rotateY(180deg) translateZ(26px)' },
+  { val: 3, transform: 'rotateY(90deg) translateZ(26px)' },
+  { val: 4, transform: 'rotateY(-90deg) translateZ(26px)' },
+  { val: 2, transform: 'rotateX(90deg) translateZ(26px)' },
+  { val: 5, transform: 'rotateX(-90deg) translateZ(26px)' },
+];
+
+const Die3D: React.FC<{ value: number; tone?: 'ivory' | 'crimson'; rolling?: boolean; tilt?: number }> = ({
   value,
   tone = 'ivory',
   rolling = false,
-}) => {
-  const pips = PIP_POSITIONS[value] || PIP_POSITIONS[1];
-  const bg = tone === 'ivory' ? '#fdf6e4' : '#7b221b';
-  const pipColor = tone === 'ivory' ? '#2b1d12' : '#fbe3a4';
-  const border = tone === 'ivory' ? '#b89452' : '#d6a246';
-
-  return (
-    <div className={`w-14 h-14 ${rolling ? 'animate-dice-tumble' : ''}`}>
-      <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-[0_4px_6px_rgba(0,0,0,0.45)]">
-        <rect x="6" y="6" width="88" height="88" rx="18" fill={bg} stroke={border} strokeWidth="5" />
-        {pips.map(([cx, cy], idx) => (
-          <circle key={idx} cx={cx} cy={cy} r="8.5" fill={pipColor} />
-        ))}
-      </svg>
+  tilt = 0,
+}) => (
+  <div className="flex flex-col items-center">
+    <div className={`dice-scene ${rolling ? 'animate-dice-throw' : ''}`}>
+      <div
+        className={`dice-cube ${tone === 'ivory' ? 'dice-ivory' : 'dice-crimson'}`}
+        style={{ transform: `rotateZ(${tilt}deg) ${FACE_TRANSFORMS[value] || FACE_TRANSFORMS[1]}` }}
+      >
+        {CUBE_FACES.map(f => {
+          const pips = PIP_CELLS[f.val];
+          return (
+            <div key={f.val} className="dice-face" style={{ transform: f.transform }}>
+              {Array.from({ length: 9 }, (_, cell) => (
+                <div key={cell} className={pips.includes(cell) ? 'dice-pip' : ''} />
+              ))}
+            </div>
+          );
+        })}
+      </div>
     </div>
-  );
-};
+    <div className="w-12 h-2.5 -mt-0.5 rounded-full bg-black/55 blur-[3px] pointer-events-none" />
+  </div>
+);
 
 export const CantinaGames: React.FC<CantinaGamesProps> = ({
   gold,
@@ -66,16 +92,17 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
   const [bet, setBet] = useState(10);
   const [result, setResult] = useState<{ win: boolean; note: string } | null>(null);
 
-  // Dice state (2 dice + 1 optional tactical reroll of lower die)
+  // Dice state
   const [dicePhase, setDicePhase] = useState<'ready' | 'rolled' | 'done'>('ready');
   const [playerDice, setPlayerDice] = useState<[number, number]>([3, 4]);
   const [barkeepDice, setBarkeepDice] = useState<[number, number]>([3, 3]);
   const [diceRollKey, setDiceRollKey] = useState(0);
   const [rerolledOnce, setRerolledOnce] = useState(false);
 
-  // Coin toss state
+  // Coin toss state (cumulative Y rotation so every flip spins cleanly to Sun=0deg mod 360 or Anchor=180deg mod 360)
   const [coinFlipping, setCoinFlipping] = useState(false);
-  const [coinSide, setCoinSide] = useState<'sun' | 'anchor'>('sun');
+  const [coinRotationY, setCoinRotationY] = useState(0);
+  const [coinFlipKey, setCoinFlipKey] = useState(0);
 
   // Arm wrestling state
   const [armPos, setArmPos] = useState(50);
@@ -93,7 +120,6 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
     };
   }, []);
 
-  // Arm wrestling bar sweep
   useEffect(() => {
     if (activeGame !== 'arm' || result || armResolving) return;
     const id = setInterval(() => {
@@ -107,7 +133,6 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
     return () => clearInterval(id);
   }, [activeGame, result, armResolving]);
 
-  // Arm wrestling video rocking loop
   useEffect(() => {
     const video = armVideoRef.current;
     if (activeGame !== 'arm' || result || armResolving || !video) return;
@@ -158,6 +183,7 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
     setDicePhase('ready');
     setRerolledOnce(false);
     setCoinFlipping(false);
+    setCoinRotationY(0);
     armDirRef.current = 1;
     armResolvedRef.current = false;
     armOutcomeRef.current = null;
@@ -179,9 +205,7 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
 
   const rollMyDice = () => {
     onPlaySfx('click');
-    const a = d6();
-    const b = d6();
-    setPlayerDice([a, b]);
+    setPlayerDice([d6(), d6()]);
     setDiceRollKey(k => k + 1);
     setDicePhase('rolled');
   };
@@ -203,21 +227,25 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
     setDicePhase('done');
     const pSum = playerDice[0] + playerDice[1];
     const bSum = ba + bb;
-    const win = pSum > bSum;
-    conclude(win, `You rolled ${pSum} vs the barkeep's ${bSum}.`);
+    conclude(pSum > bSum, `You rolled ${pSum} vs the barkeep's ${bSum}.`);
   };
 
   // --- COIN TOSS LOGIC ---
   const flipCoin = (pickSide: 'sun' | 'anchor') => {
     if (coinFlipping) return;
-    onPlaySfx('click');
+    onPlaySfx('coin');
     setCoinFlipping(true);
+    setCoinFlipKey(k => k + 1);
     const landed: 'sun' | 'anchor' = Math.random() < 0.5 ? 'sun' : 'anchor';
+    // Spin 4 full turns + 180deg if landing on Anchor
+    setCoinRotationY(prev => {
+      const base = Math.ceil(prev / 360) * 360 + 1440;
+      return landed === 'anchor' ? base + 180 : base;
+    });
     setTimeout(() => {
-      setCoinSide(landed);
       setCoinFlipping(false);
       conclude(pickSide === landed, `The doubloon lands on ${landed === 'sun' ? 'Sun' : 'Anchor'}.`);
-    }, 950);
+    }, 980);
   };
 
   // --- ARM WRESTLE LOGIC ---
@@ -252,36 +280,58 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
     <div className="space-y-3">
       <div className="parchment rounded-3xl p-4 shadow-xl">
         {activeGame ? (
-          <div className="space-y-4 py-1 text-center">
+          <div className="space-y-3.5 py-0.5 text-center">
             <h2 className="font-display text-xl font-black uppercase tracking-wider text-[#3b2412]">
               {GAME_TITLES[activeGame]}
             </h2>
 
-            {/* CAPTAIN'S DICE */}
+            {/* CAPTAIN'S DICE ON ILLUSTRATED TAVERN TABLE */}
             {activeGame === 'dice' && (
-              <div className="space-y-4">
-                <div className="bg-[#1b4032] border-2 border-[#8c6429] rounded-2xl p-4 shadow-inner space-y-3">
-                  <div className="flex justify-around items-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-[#f5d583]">Your Hand</span>
-                      <div key={`p-${diceRollKey}`} className="flex gap-2">
-                        <DieFace value={playerDice[0]} tone="ivory" rolling={dicePhase !== 'ready'} />
-                        <DieFace value={playerDice[1]} tone="ivory" rolling={dicePhase !== 'ready'} />
-                      </div>
-                      {dicePhase !== 'ready' && (
-                        <span className="text-xs font-extrabold text-[#f7ecd4]">Total: {playerDice[0] + playerDice[1]}</span>
+              <div className="space-y-3">
+                <div className="relative rounded-2xl overflow-hidden border-2 border-[#a87e3b] shadow-xl aspect-[4/3]">
+                  <img
+                    src="/assets/cantina/dice_table.webp"
+                    alt="Tavern dice tray"
+                    className="absolute inset-0 w-full h-full object-cover"
+                    draggable="false"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/30" />
+
+                  <div className="relative z-10 h-full flex flex-col justify-between p-3.5">
+                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                      <span className="px-2.5 py-1 rounded-full bg-[#1d120b]/85 border border-[#c8963e]/70 text-[#f8d77d]">
+                        {dicePhase === 'ready' ? 'Ready to Roll' : `Your Hand: ${playerDice[0] + playerDice[1]}`}
+                      </span>
+                      {dicePhase === 'done' && (
+                        <span className="px-2.5 py-1 rounded-full bg-[#6e1a13]/90 border border-[#f5c768]/70 text-[#fde6c4]">
+                          Barkeep: {barkeepDice[0] + barkeepDice[1]}
+                        </span>
                       )}
                     </div>
-                    {dicePhase === 'done' && (
-                      <div className="flex flex-col items-center gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-[#f4b0a5]">Barkeep</span>
-                        <div key={`b-${diceRollKey}`} className="flex gap-2">
-                          <DieFace value={barkeepDice[0]} tone="crimson" rolling />
-                          <DieFace value={barkeepDice[1]} tone="crimson" rolling />
-                        </div>
-                        <span className="text-xs font-extrabold text-[#f7ecd4]">Total: {barkeepDice[0] + barkeepDice[1]}</span>
+
+                    <div className="flex items-center justify-center gap-6 my-auto">
+                      {/* Player 3D Ivory Dice */}
+                      <div key={`p-${diceRollKey}`} className="flex gap-3">
+                        <Die3D value={playerDice[0]} tone="ivory" rolling={dicePhase !== 'ready'} tilt={-7} />
+                        <Die3D value={playerDice[1]} tone="ivory" rolling={dicePhase !== 'ready'} tilt={8} />
                       </div>
-                    )}
+
+                      {/* Barkeep 3D Crimson Dice */}
+                      {dicePhase === 'done' && (
+                        <div key={`b-${diceRollKey}`} className="flex gap-3">
+                          <Die3D value={barkeepDice[0]} tone="crimson" rolling tilt={-5} />
+                          <Die3D value={barkeepDice[1]} tone="crimson" rolling tilt={9} />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="text-[10px] font-bold text-[#f7ecd4]/90 drop-shadow">
+                      {dicePhase === 'ready'
+                        ? 'Cast the ivory dice onto the felt.'
+                        : dicePhase === 'rolled'
+                          ? 'You may reroll your lower die once before standing.'
+                          : ''}
+                    </div>
                   </div>
                 </div>
 
@@ -310,30 +360,46 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
               </div>
             )}
 
-            {/* GOLD DOUBLOON TOSS */}
+            {/* GOLD DOUBLOON TOSS ON ILLUSTRATED BAR COUNTER */}
             {activeGame === 'coin' && (
-              <div className="space-y-4">
-                <div className="bg-[#2a1a10] border-2 border-[#a87e3b] rounded-2xl py-6 flex flex-col items-center justify-center shadow-inner">
-                  <div className={coinFlipping ? 'animate-coin-flip' : ''}>
-                    <svg viewBox="0 0 100 100" className="w-24 h-24 drop-shadow-[0_6px_12px_rgba(0,0,0,0.6)]">
-                      <circle cx="50" cy="50" r="44" fill="#d99a26" stroke="#7c4e0a" strokeWidth="4" />
-                      <circle cx="50" cy="50" r="35" fill="#f7cf64" stroke="#b57614" strokeWidth="2.5" />
-                      {coinSide === 'sun' ? (
-                        <g fill="#7c4e0a">
-                          <circle cx="50" cy="50" r="12" />
-                          {[0, 45, 90, 135, 180, 225, 270, 315].map(deg => (
-                            <rect key={deg} x="48" y="21" width="4" height="10" rx="2" transform={`rotate(${deg} 50 50)`} />
-                          ))}
-                        </g>
-                      ) : (
-                        <g stroke="#7c4e0a" strokeWidth="4.5" strokeLinecap="round" fill="none">
-                          <circle cx="50" cy="31" r="5" />
-                          <path d="M50 36v32M39 45h22M35 58a15 15 0 0 0 30 0" />
-                        </g>
-                      )}
-                    </svg>
+              <div className="space-y-3">
+                <div className="relative rounded-2xl overflow-hidden border-2 border-[#a87e3b] shadow-xl aspect-[4/3]">
+                  <img
+                    src="/assets/cantina/coin_table.webp"
+                    alt="Candlelit tavern counter"
+                    className="absolute inset-0 w-full h-full object-cover"
+                    draggable="false"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/25" />
+
+                  <div className="relative z-10 h-full flex flex-col items-center justify-end pb-6 coin-stage">
+                    <div key={`toss-${coinFlipKey}`} className={coinFlipping ? 'animate-coin-toss' : ''}>
+                      <div
+                        className="coin-3d"
+                        style={{ transform: `rotateY(${coinRotationY}deg)` }}
+                      >
+                        <div className="coin-face">
+                          <img
+                            src="/assets/cantina/coin_sun.webp"
+                            alt="Sun Doubloon"
+                            className="w-full h-full object-contain drop-shadow-[0_6px_12px_rgba(0,0,0,0.65)]"
+                            draggable="false"
+                          />
+                        </div>
+                        <div className="coin-face coin-face-back">
+                          <img
+                            src="/assets/cantina/coin_anchor.webp"
+                            alt="Anchor Doubloon"
+                            className="w-full h-full object-contain drop-shadow-[0_6px_12px_rgba(0,0,0,0.65)]"
+                            draggable="false"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className={`w-24 h-3.5 mt-1 rounded-full bg-black/65 blur-[4px] ${coinFlipping ? 'animate-coin-shadow' : ''}`} />
                   </div>
                 </div>
+
                 {!result && (
                   <div className="grid grid-cols-2 gap-2.5">
                     <button onClick={() => flipCoin('sun')} disabled={coinFlipping} className="btn-brass disabled:opacity-50 py-3.5 rounded-xl font-display font-black uppercase tracking-wider text-xs">
@@ -419,7 +485,6 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
             </button>
 
             <div className="parchment-card rounded-2xl p-3 space-y-3">
-              {/* Game Picker Tabs */}
               <div className="grid grid-cols-3 gap-1.5">
                 {(['dice', 'coin', 'arm'] as PubGameType[]).map(gId => (
                   <button
@@ -436,7 +501,6 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
                 ))}
               </div>
 
-              {/* Stakes & Reward Mode */}
               <div className="flex justify-between items-center text-[11px] font-extrabold uppercase text-[#4b3520]">
                 <span>Play for</span>
                 <div className="flex gap-1.5">

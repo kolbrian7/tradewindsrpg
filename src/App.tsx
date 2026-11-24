@@ -19,7 +19,7 @@ import {
   OFFICERS, ESCORTS, SYNDICATE_RIVALS,
   loadGame, saveGame, clearSave, buyGoods, sellGoods, buyPrice, sellPrice, cargoCount, netWorth, rankFor,
   advanceDays, learnRumor, voyageDays, rollAmbush, rollWeather, routeTip, tradeRole, emptyCargo, pickMinigame,
-  computeSeaRoute, pointAlongRoute, totalCargoCapacity, totalFirepower, effectiveSpeed, reputationTier,
+  computeSeaRoute, pointAlongRoute, routeToSmoothPath, totalCargoCapacity, totalFirepower, effectiveSpeed, reputationTier,
   acceptContract, claimContract, rollSeaEvent,
   getUpgradesForTier, applyUpgrade, generateEnemy, generateLoot, generateRivalEnemy,
   rollAimedShot, rollShot, rollFlee, rollBoard, tributeCost, pickEnemyIntent,
@@ -1110,30 +1110,29 @@ const App: React.FC = () => {
                   draggable="false"
                 />
 
-                {/* Water-Lane Route Overlay */}
+                {/* Delicate Cartographic Dotted Sea-Lane Trail */}
                 {selectedRoute && selectedRoute.length > 1 && (
                   <svg
-                    viewBox="0 0 100 100"
+                    viewBox="0 0 1000 558"
                     preserveAspectRatio="none"
                     className="absolute inset-0 w-full h-full pointer-events-none z-10"
                   >
-                    <polyline
-                      points={selectedRoute.map(p => `${p.x},${p.y}`).join(' ')}
+                    <path
+                      d={routeToSmoothPath(selectedRoute, 1000, 558)}
                       fill="none"
-                      stroke="#1d120b"
-                      strokeWidth="1.2"
+                      stroke="#1a1109"
                       strokeOpacity="0.45"
+                      strokeWidth="4.4"
+                      strokeDasharray="1 10"
                       strokeLinecap="round"
-                      strokeLinejoin="round"
                     />
-                    <polyline
-                      points={selectedRoute.map(p => `${p.x},${p.y}`).join(' ')}
+                    <path
+                      d={routeToSmoothPath(selectedRoute, 1000, 558)}
                       fill="none"
-                      stroke="#ffd970"
-                      strokeWidth="0.65"
-                      strokeDasharray="2.2 1.8"
+                      stroke="#fff3cf"
+                      strokeWidth="2.5"
+                      strokeDasharray="1 10"
                       strokeLinecap="round"
-                      strokeLinejoin="round"
                       className="animate-route-dash"
                     />
                   </svg>

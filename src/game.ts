@@ -345,7 +345,7 @@ const SEA_NODES: Record<string, Point> = {
   // Coastal water entry points just outside each port
   w_barcelona: { x: 18, y: 27 },
   w_nice:      { x: 30, y: 19 },
-  w_sardinia:  { x: 34, y: 36 },
+  w_sardinia:  { x: 35, y: 31 },
   w_rome:      { x: 45, y: 32 },
   w_venice:    { x: 53, y: 11 },
   w_tunisia:   { x: 22, y: 81 },
@@ -354,8 +354,8 @@ const SEA_NODES: Record<string, Point> = {
   w_egypt:     { x: 78, y: 85 },
   // Open-sea junctions matching painted dashed sea lanes
   balearic:    { x: 22, y: 42 },
-  ligurian:    { x: 34, y: 23 },
-  westSard:    { x: 29, y: 38 },
+  ligurian:    { x: 32, y: 23 },
+  westSard:    { x: 30, y: 37 },
   tyrrhenian:  { x: 42, y: 39 },
   sicilyWest:  { x: 37, y: 57 },
   sicilySouth: { x: 48, y: 65 },
@@ -370,7 +370,7 @@ const SEA_NODES: Record<string, Point> = {
 const SEA_EDGES: [string, string][] = [
   ['w_barcelona', 'balearic'], ['w_barcelona', 'ligurian'],
   ['w_nice', 'ligurian'], ['w_nice', 'westSard'],
-  ['ligurian', 'westSard'], ['ligurian', 'tyrrhenian'],
+  ['ligurian', 'w_sardinia'], ['ligurian', 'westSard'], ['ligurian', 'tyrrhenian'],
   ['westSard', 'balearic'], ['westSard', 'w_sardinia'], ['westSard', 'sicilyWest'],
   ['w_sardinia', 'tyrrhenian'], ['w_sardinia', 'sicilyWest'],
   ['w_rome', 'tyrrhenian'], ['tyrrhenian', 'sicilyWest'], ['tyrrhenian', 'sicilySouth'],
@@ -465,6 +465,29 @@ export const pointAlongRoute = (pts: Point[], t: number): Point => {
     target -= segs[i];
   }
   return pts[pts.length - 1];
+};
+
+/** Converts waypoint percentages into a smooth Catmull-Rom Cubic Bezier SVG path string. */
+export const routeToSmoothPath = (pts: Point[], width = 1000, height = 558): string => {
+  if (pts.length === 0) return '';
+  const scaled = pts.map(p => ({ x: (p.x / 100) * width, y: (p.y / 100) * height }));
+  if (scaled.length === 1) return `M ${scaled[0].x.toFixed(1)} ${scaled[0].y.toFixed(1)}`;
+  if (scaled.length === 2) {
+    return `M ${scaled[0].x.toFixed(1)} ${scaled[0].y.toFixed(1)} L ${scaled[1].x.toFixed(1)} ${scaled[1].y.toFixed(1)}`;
+  }
+  let d = `M ${scaled[0].x.toFixed(1)} ${scaled[0].y.toFixed(1)}`;
+  for (let i = 0; i < scaled.length - 1; i++) {
+    const p0 = scaled[Math.max(0, i - 1)];
+    const p1 = scaled[i];
+    const p2 = scaled[i + 1];
+    const p3 = scaled[Math.min(scaled.length - 1, i + 2)];
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
 };
 
 export type WeatherType = 'Tailwind' | 'Fair Seas' | 'Crosswind' | 'Mistral Gale';
