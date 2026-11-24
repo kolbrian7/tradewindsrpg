@@ -141,7 +141,7 @@ export const PrologueStoryboard: React.FC<PrologueStoryboardProps> = ({ onComple
           audioManager.playSfx('click');
           onComplete();
         }}
-        className="absolute top-6 right-6 z-30 text-slate-400 hover:text-amber-400 active:scale-95 transition-all font-black uppercase text-[10px] tracking-[0.25em] bg-black/40 hover:bg-black/80 px-4 py-2 rounded-full border border-amber-500/20 backdrop-blur-md shadow-lg pointer-events-auto cursor-pointer"
+        className="absolute top-6 right-6 z-[60] text-slate-300 hover:text-amber-400 active:scale-95 transition-all font-black uppercase text-[10px] tracking-[0.25em] bg-black/40 hover:bg-black/80 px-4 py-2 rounded-full border border-amber-500/20 backdrop-blur-md shadow-lg pointer-events-auto cursor-pointer"
       >
         Skip Intro
       </button>

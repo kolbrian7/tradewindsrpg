@@ -1,9 +1,10 @@
-const CACHE_NAME = 'tradewinds-cache-v2';
+const CACHE_NAME = 'tradewinds-cache-v3';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/favicon.svg',
   '/manifest.webmanifest',
+  '/assets/World Map.webp',
   '/assets/New Lands/Athens.webp',
   '/assets/New Lands/Barcellona.webp',
   '/assets/New Lands/Crete.webp',
@@ -63,6 +64,22 @@ self.addEventListener('fetch', (event) => {
 
   // Bypass service worker for video files to avoid 206 Range Request issues
   if (url.pathname.endsWith('.mp4')) return;
+
+  // Network-first for HTML navigations so new deploys load immediately
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request).then((res) => res || caches.match('/index.html')))
+    );
+    return;
+  }
 
   event.respondWith(
     caches.open(CACHE_NAME).then((cache) => {
