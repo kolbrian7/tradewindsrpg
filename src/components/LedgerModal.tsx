@@ -8,6 +8,7 @@ interface LedgerModalProps {
   onClose: () => void;
   onAcceptContract: (id: string) => void;
   onClaimContract: (id: string) => void;
+  onBuyPort: () => void;
   onHuntRival: (rival: RivalDef) => void;
 }
 
@@ -16,6 +17,7 @@ export const LedgerModal: React.FC<LedgerModalProps> = ({
   onClose,
   onAcceptContract,
   onClaimContract,
+  onBuyPort,
   onHuntRival,
 }) => {
   const [sub, setSub] = useState<'contracts' | 'syndicate' | 'ports'>('contracts');
@@ -201,7 +203,15 @@ export const LedgerModal: React.FC<LedgerModalProps> = ({
                         {rep.label} ({player.reputation?.[p.id] || 0})
                       </span>
                     </div>
-                    {player.hasWonGame && (
+                    {player.hasWonGame && !ownsPort(player, p.id) && !leagueHolds(player, p.id) && (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold text-[#7d4f0a]">For sale: {portPrice(p.id).toLocaleString()} gold{(player.reputation?.[p.id] || 0) >= 80 ? '' : ' · Patron needed'}</span>
+                        {p.id === player.currentPortId
+                          ? <button onClick={onBuyPort} className="btn-brass px-3 py-1.5 rounded-xl text-[10px] font-black uppercase shrink-0">Buy</button>
+                          : <span className="text-[10px] font-bold uppercase text-[#8a7458] shrink-0">Sail there to buy</span>}
+                      </div>
+                    )}
+                    {player.hasWonGame && (ownsPort(player, p.id) || leagueHolds(player, p.id)) && (
                       <div className="text-[11px] font-bold text-[#7d4f0a]">
                         {ownsPort(player, p.id)
                           ? `⚑ Yours · ${portDailyIncome(p.id).toLocaleString()} gold a day · ${portIncomeDue(player, p.id).toLocaleString()} waiting`

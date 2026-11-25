@@ -135,6 +135,7 @@ const App: React.FC = () => {
   const [notice, setNotice] = useState<{ title: string; body: string } | null>(null);
   const [portOffer, setPortOffer] = useState(false);
   const [repOpen, setRepOpen] = useState(false);
+  const [pillPressed, setPillPressed] = useState(false);
   const [yardOpen, setYardOpen] = useState<string | null>('flagship');
   const [toast, setToast] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(audioManager.getMuted());
@@ -477,9 +478,44 @@ const App: React.FC = () => {
 
   // --- PANNING & SCROLL CENTERING ---
 
+  // The map follows the mouse with a little weight: the view eases toward where you dragged it, and a flick keeps
+  // gliding after you let go. (Touch scrolling is left to the phone, which already has momentum.)
+  const mapEase = useRef({ target: 0, raf: 0, last: 0, v: 0, lastX: 0, lastT: 0 });
+  const runMapEase = () => {
+    const st = mapEase.current;
+    if (st.raf) return;
+    st.last = performance.now();
+    const tick = (now: number) => {
+      const el = mapScrollRef.current;
+      if (!el) { st.raf = 0; return; }
+      const dt = Math.min(50, now - st.last);
+      st.last = now;
+      if (!isMouseDownRef.current && Math.abs(st.v) > 0.01) {          // glide after a flick
+        st.target += st.v * dt;
+        st.v *= Math.exp(-dt / 380);
+      }
+      st.target = Math.max(0, Math.min(el.scrollWidth - el.clientWidth, st.target));
+      const gap = st.target - el.scrollLeft;
+      el.scrollLeft += gap * (1 - Math.exp(-dt / 110));
+      if (!isMouseDownRef.current && Math.abs(gap) < 0.5 && Math.abs(st.v) <= 0.01) { st.raf = 0; st.v = 0; return; }
+      st.raf = requestAnimationFrame(tick);
+    };
+    st.raf = requestAnimationFrame(tick);
+  };
+  const stopMapEase = () => { const st = mapEase.current; cancelAnimationFrame(st.raf); st.raf = 0; st.v = 0; };
+  const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (isEditMode) return;
+    const el = e.currentTarget, st = mapEase.current;
+    if (!st.raf) st.target = el.scrollLeft;
+    st.v = 0;
+    st.target += (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) * 1.4;
+    runMapEase();
+  };
+
   const handlePanMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isEditMode) return;
     const container = e.currentTarget;
+    if (container === mapScrollRef.current) { const st = mapEase.current; st.target = container.scrollLeft; st.v = 0; st.lastX = e.pageX; st.lastT = performance.now(); }
     isMouseDownRef.current = true;
     dragMovedRef.current = false;
     startXRef.current = e.pageX - container.offsetLeft;
@@ -494,11 +530,21 @@ const App: React.FC = () => {
     const container = e.currentTarget;
     const dx = e.pageX - container.offsetLeft - startXRef.current;
     if (Math.abs(dx) > 6) dragMovedRef.current = true;
+    if (container === mapScrollRef.current) {
+      const st = mapEase.current, now = performance.now();
+      const step = -(e.pageX - st.lastX) * 1.4, dt = Math.max(1, now - st.lastT);
+      st.v = st.v * 0.6 + (step / dt) * 0.4;                              // smoothed speed, for the glide on release
+      st.lastX = e.pageX; st.lastT = now;
+      st.target = scrollLeftRef.current - dx * 1.4;
+      runMapEase();
+      return;
+    }
     container.scrollLeft = scrollLeftRef.current - dx * 1.4;
   };
 
   const handlePanMouseUpOrLeave = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isEditMode) { handleDragEnd(); return; }
+    if (e.currentTarget === mapScrollRef.current && isMouseDownRef.current) { if (performance.now() - mapEase.current.lastT > 90) mapEase.current.v = 0; runMapEase(); }
     isMouseDownRef.current = false;
     e.currentTarget.style.cursor = '';
   };
@@ -1117,35 +1163,46 @@ const App: React.FC = () => {
 
             {/* Top Port Crest */}
             <div className="absolute top-2.5 left-0 right-0 flex flex-col items-center pointer-events-none z-30 px-4">
-              <div className="pointer-events-auto bg-[#1d120b]/85 backdrop-blur-sm border border-[#c8963e]/70 rounded-full shadow-xl flex items-stretch overflow-hidden">
-                <button onClick={() => { audioManager.playSfx('click'); setRepOpen(true); }} className="pl-3.5 pr-3 py-1 flex items-center gap-2" aria-label="Your standing here">
-                  {ownsHere && <span className="w-[18px] h-[18px] rounded-full bg-[#f5c749] border border-[#5b3508] text-[#3a2206] text-[11px] leading-none flex items-center justify-center shadow">⚑</span>}
-                  {leagueHere && <span className="w-[18px] h-[18px] rounded-full bg-[#1a1210] border border-[#f06458] text-[#f06458] text-[11px] leading-none flex items-center justify-center shadow">☠</span>}
-                  <h1 className="font-display text-lg font-black uppercase tracking-widest text-[#f8d77d]">{currentPort.name}</h1>
-                  {/* standing: one pip per level reached */}
-                  <span className="flex gap-[3px]" title={`Standing: ${currentRep.label}`}>
-                    {REP_STEPS.slice(1).map(st => (
-                      <span key={st.label} className={`w-[7px] h-[7px] rounded-full ${repPts >= st.at ? 'bg-[#3fd0e0]' : 'bg-[#4a3a2a]'}`} />
-                    ))}
-                  </span>
-                </button>
-                {!isEditMode && (leagueHere || (flagshipHere && ownsHere)) && (
-                  <button
-                    onClick={() => handleHuntRival(leagueHere ? leagueCaptain(currentPort) : LEAGUE_FLAGSHIP)}
-                    className="px-3 bg-[#a72d22] text-white font-display text-[11px] font-black uppercase tracking-wider"
-                  >
-                    {leagueHere ? 'Free It' : 'Fight'}
-                  </button>
-                )}
-                {!isEditMode && player.hasWonGame && !ownsHere && !leagueHere && (
-                  <button
-                    onClick={() => { audioManager.playSfx('click'); setPortOffer(true); }}
-                    className={`px-3.5 font-display text-[11px] font-black uppercase tracking-wider ${canBuyPort(g, currentPort.id) ? 'bg-[#f5c749] text-[#3a2206] animate-pulse' : 'bg-[#7a5a22] text-[#f6e7c0]'}`}
-                  >
-                    Buy
-                  </button>
-                )}
-              </div>
+              {(() => {
+                // The name sits in its own dark capsule; an action (Buy / Free It / Fight) shows as a second colour
+                // behind it, so the pill reads "(VENICE) BUY)" with a pale line along the curve between the two.
+                const fight = !isEditMode && (leagueHere || (flagshipHere && ownsHere));
+                const buy = !isEditMode && !fight && player.hasWonGame && !ownsHere;
+                const canBuy = buy && canBuyPort(g, currentPort.id);
+                const action = fight || buy;
+                return (
+                  <div className={`pointer-events-auto rounded-full shadow-xl flex items-stretch ${fight ? 'bg-[#a72d22]' : buy ? (canBuy ? 'bg-[#f5c749]' : 'bg-[#8a6a2c]') : ''}`}>
+                    <button
+                      onClick={() => { audioManager.playSfx('click'); setRepOpen(true); }}
+                      aria-label="Your standing here"
+                      className={`rounded-full bg-[#1d120b] px-4 py-1 flex items-center gap-2 ${action ? 'border-r-2 border-[#fff6de]' : 'border border-[#c8963e]/70'}`}
+                    >
+                      {ownsHere && <span className="w-[18px] h-[18px] rounded-full bg-[#f5c749] border border-[#5b3508] text-[#3a2206] text-[11px] leading-none flex items-center justify-center shadow">⚑</span>}
+                      {leagueHere && <span className="w-[18px] h-[18px] rounded-full bg-[#1a1210] border border-[#f06458] text-[#f06458] text-[11px] leading-none flex items-center justify-center shadow">☠</span>}
+                      <h1 className="font-display text-lg font-black uppercase tracking-widest text-[#f8d77d]">{currentPort.name}</h1>
+                    </button>
+                    {action && (
+                      <button
+                        onClick={() => {
+                          // The segment slides out and the word swells for a beat before anything opens.
+                          if (pillPressed) return;
+                          audioManager.playSfx('click');
+                          setPillPressed(true);
+                          setTimeout(() => {
+                            setPillPressed(false);
+                            if (fight) handleHuntRival(leagueHere ? leagueCaptain(currentPort) : LEAGUE_FLAGSHIP);
+                            else setPortOffer(true);
+                          }, 230);
+                        }}
+                        style={{ transition: 'padding 200ms cubic-bezier(.2,1.6,.4,1), font-size 200ms cubic-bezier(.2,1.6,.4,1)' }}
+                        className={`font-display font-black uppercase tracking-wider ${pillPressed ? 'pl-4 pr-7 text-[16px]' : 'pl-2.5 pr-3.5 text-[12px]'} ${fight ? 'text-white' : canBuy ? 'text-[#3a2206]' : 'text-[#fff1cf]'}`}
+                      >
+                        {fight ? (leagueHere ? 'Free It' : 'Fight') : 'Buy'}
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
               {isEditMode && (
                 <span className="mt-1 text-[10px] font-black uppercase tracking-widest bg-[#a72d22] text-white px-3 py-0.5 rounded-full">
                   Layout Editor: Drag to Move
@@ -1198,6 +1255,8 @@ const App: React.FC = () => {
             <div
               ref={mapScrollRef}
               className="flex-1 relative overflow-x-auto overflow-y-hidden no-scrollbar cursor-grab"
+              onWheel={handleMapWheel}
+              onTouchStart={stopMapEase}
               onMouseDown={handlePanMouseDown}
               onMouseMove={handlePanMouseMove}
               onTouchMove={handleDragMove}
@@ -1740,6 +1799,7 @@ const App: React.FC = () => {
           onClose={() => setLedgerOpen(false)}
           onAcceptContract={handleAcceptContract}
           onClaimContract={handleClaimContract}
+          onBuyPort={() => { audioManager.playSfx('click'); setLedgerOpen(false); setPortOffer(true); }}
           onHuntRival={handleHuntRival}
         />
       )}
