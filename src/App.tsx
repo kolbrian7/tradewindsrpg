@@ -25,6 +25,7 @@ import {
   PIRATE_REP, REP_STEPS, sellRepGain,
   LEAGUE_NAME, LEAGUE_FLAGSHIP, leagueHolds, leagueCaptain, isLeagueRival, flagshipReady, leagueTick, leagueBeaten,
   buyTrader, setTraderRoute, upgradeTrader, advanceTraders, traderLeg, MAX_TRADERS, TRADER_CLASSES,
+  BRIBE_MIN_REP, bribeCost, canBribePort, bribeForPort,
   PORT_UPGRADES, portHas, portUpgradeCost, isGrandHarbour, buyPortUpgrade,
   PORT_OWN_REP, portPrice, portDailyIncome, ownsPort, canBuyPort, buyPort, payPorts, portsDailyIncome, fleetDailyIncome, portRaided,
   computeSeaRoute, pointAlongRoute, routeToSmoothPath, smoothRoute, totalCargoCapacity, totalFirepower, effectiveSpeed, reputationTier,
@@ -1022,7 +1023,7 @@ const App: React.FC = () => {
                 : <span className="text-[#bda57a] text-[11px] font-bold">/ {GOAL.toLocaleString()}</span>}
             </span>
             <span className="text-[10px] text-[#d6c29f] font-bold uppercase tracking-widest mt-1 truncate">
-              {player.hasWonGame ? `Day ${player.gameDay} · Ports ${ownedCount}/${ports.length}` : `${rank} · Day ${player.gameDay} · Syndicate ${player.defeatedRivals.length}/${SYNDICATE_RIVALS.length}`}
+              {player.hasWonEmpire ? 'Master of the Mediterranean' : player.hasWonGame ? `Day ${player.gameDay} · Ports ${ownedCount}/${ports.length}` : `${rank} · Day ${player.gameDay} · Syndicate ${player.defeatedRivals.length}/${SYNDICATE_RIVALS.length}`}
             </span>
           </div>
 
@@ -1942,7 +1943,7 @@ const App: React.FC = () => {
           <Celebration />
           <div className="parchment p-6 rounded-3xl max-w-sm w-full text-center space-y-3 max-h-full overflow-y-auto relative">
             <div className="text-[11px] font-black uppercase tracking-[0.3em] text-[#146572]">You won</div>
-            <h2 className="font-display text-3xl font-black uppercase text-[#8a4d09]">Merchant Prince!</h2>
+            <h2 className="font-display text-2xl font-black uppercase text-[#8a4d09] leading-tight">Merchant of the Mediterranean!</h2>
             <p className="text-xs text-[#2b1d12] leading-relaxed">
               With Lord Valerio defeated, the Syndicate shattered and {player.gold.toLocaleString()} gold in your coffers, you reclaim your family's honor. Every port from Venice to Egypt salutes your flagship.
             </p>
@@ -1954,13 +1955,13 @@ const App: React.FC = () => {
               onClick={() => {
                 setG(prev => ({ ...prev, player: { ...prev.player, hasWonGame: true } }));
                 setNotice({
-                  title: 'A New Chapter',
-                  body: `The Syndicate is gone and its harbours are leaderless. Every Harbor Master will now sell you their port once you are a Patron there (standing ${PORT_OWN_REP}). A harbour you own pays you gold every day, flies your flag and repairs your ship for free. Own all nine to rule the Mediterranean.`,
+                  title: 'Master the Mediterranean',
+                  body: `You are a Merchant of the Mediterranean. Now master it. Every Harbor Master will sell you their port once you are a Patron there (standing ${PORT_OWN_REP}), or sooner for a bribe. A harbour you own pays you gold every day, flies your flag and repairs your ship for free. Own all nine and you are Master of the Mediterranean.`,
                 });
               }}
               className="w-full btn-teal py-3 rounded-xl font-display font-black uppercase tracking-wider text-xs"
             >
-              Keep Sailing: Buy the Harbours
+              Keep Sailing: Master the Mediterranean
             </button>
             <button onClick={restartGame} className="w-full btn-brass py-3.5 rounded-xl font-display font-black uppercase tracking-wider text-xs">
               Start a New Voyage
@@ -2039,6 +2040,23 @@ const App: React.FC = () => {
               >
                 Buy for {price.toLocaleString()}
               </button>
+              {!repOk && (pts >= BRIBE_MIN_REP ? (
+                <button
+                  disabled={!canBribePort(g, currentPort.id)}
+                  onClick={() => {
+                    audioManager.playSfx('coin');
+                    setG(prev => bribeForPort(prev, currentPort.id));
+                    setPortOffer(false);
+                    say(`The Harbor Master pockets your gold. ${currentPort.name} is yours.`);
+                  }}
+                  className="w-full btn-crimson py-2.5 rounded-xl font-display font-black uppercase tracking-wider text-[11px] disabled:opacity-40 leading-tight"
+                >
+                  Or bribe the Harbor Master: {(price + bribeCost(player, currentPort.id)).toLocaleString()}
+                  <span className="block text-[9px] font-bold normal-case tracking-normal opacity-90">{bribeCost(player, currentPort.id).toLocaleString()} extra for the {PORT_OWN_REP - pts} standing you lack</span>
+                </button>
+              ) : (
+                <p className="text-[11px] text-[#654b32]">He will not hear of a bribe until you are at least Known here.</p>
+              ))}
               <button onClick={() => setPortOffer(false)} className="w-full btn-teal py-2.5 rounded-xl font-display font-black uppercase tracking-wider text-xs">Not Yet</button>
             </div>
           </div>
@@ -2051,9 +2069,9 @@ const App: React.FC = () => {
           <Celebration />
           <div className="parchment p-6 rounded-3xl max-w-sm w-full text-center space-y-3 relative">
             <div className="text-[11px] font-black uppercase tracking-[0.3em] text-[#146572]">All nine harbours</div>
-            <h2 className="font-display text-3xl font-black uppercase text-[#8a4d09]">Lord of the Mediterranean!</h2>
+            <h2 className="font-display text-2xl font-black uppercase text-[#8a4d09] leading-tight">Master of the Mediterranean!</h2>
             <p className="text-xs text-[#2b1d12] leading-relaxed">
-              From Barcelona to Egypt, every harbour flies your flag. The family that lost everything now owns the sea.
+              From Barcelona to Egypt, every harbour flies your flag. You began as a merchant of this sea. You are now its master.
             </p>
             <div className="parchment-card rounded-xl p-3 flex justify-between text-xs font-bold text-[#2b1d12]">
               <span>Days at Sea</span>

@@ -686,6 +686,25 @@ export const buyPort = (g: GameState, id: string): GameState => {
   return { ...g, player: { ...g.player, gold: g.player.gold - portPrice(id), ownedPorts: { ...g.player.ownedPorts, [id]: g.player.gameDay } } };
 };
 
+/** Short of Patron? The Harbor Master can be bribed: the port's price again, plus this share of it for every
+ *  point of standing you are missing. He will not even listen below this standing. */
+export const BRIBE_PER_POINT = 0.02;
+export const BRIBE_MIN_REP = 20;
+export const bribeCost = (p: Player, id: string) => {
+  const missing = Math.max(0, PORT_OWN_REP - (p.reputation?.[id] || 0));
+  return Math.round(portPrice(id) * missing * BRIBE_PER_POINT / 100) * 100;
+};
+export const canBribePort = (g: GameState, id: string) => {
+  const p = g.player, rep = p.reputation?.[id] || 0;
+  return p.hasWonGame && p.currentPortId === id && !ownsPort(p, id) && !leagueHolds(p, id) &&
+    rep >= BRIBE_MIN_REP && rep < PORT_OWN_REP && p.gold >= portPrice(id) + bribeCost(p, id);
+};
+export const bribeForPort = (g: GameState, id: string): GameState => {
+  if (!canBribePort(g, id)) return g;
+  const p = g.player;
+  return { ...g, player: { ...p, gold: p.gold - portPrice(id) - bribeCost(p, id), ownedPorts: { ...p.ownedPorts, [id]: p.gameDay } } };
+};
+
 // --- TRADING FLEET: ships that work a route for you (second chapter) ---
 
 export const MAX_TRADERS = 3;
