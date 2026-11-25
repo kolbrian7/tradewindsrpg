@@ -137,12 +137,16 @@ export interface Player {
   defeatedRivals: string[];
   cargo: Record<CommodityType, number>;
   paid: Record<CommodityType, number>;
+  /** Where each good in the hold was last bought, so it cannot be sold straight back there at a profit. */
+  boughtIn?: Partial<Record<CommodityType, string>>;
   currentPortId: string;
   gameDay: number;
   hasReadPrologue: boolean;
   hasWonGame: boolean;
-  /** Second chapter: harbours you have bought, each with the day its takings were last collected. */
+  /** Second chapter: harbours you have bought, each with the day it starts (or resumes) paying you. */
   ownedPorts: Record<string, number>;
+  /** Improvements built in harbours you own: port id -> upgrade ids. */
+  portUpgrades: Record<string, string[]>;
   hasWonEmpire: boolean;
   /** The rival house that turns up in the second chapter and buys harbours too. */
   league: LeagueState;
@@ -295,7 +299,9 @@ export const sellPrice = (port: Port, good: CommodityType, events: TradeEvent[],
   const base = rawPriceAt(port, good, events, port.market[good].pressure);
   const repBonus = (player ? reputationTier(player.reputation?.[port.id] || 0).bonus : 0) - leagueTax(player, port.id);
   const factorBonus = player?.officers?.includes('quartermaster') ? 0.08 : 0;
-  return Math.max(1, Math.floor(base * SELL_CUT * (1 + repBonus + factorBonus)));
+  const held = player ? player.cargo[good] : 0;
+  const backCap = player && player.boughtIn?.[good] === port.id && held > 0 ? Math.max(1, Math.floor(((player.paid[good] || 0) / held) * 0.95)) : Infinity;
+  return Math.min(backCap, Math.max(1, Math.floor(base * SELL_CUT * (1 + repBonus + factorBonus))));
 };
 
 const RANKS: [number, string][] = [
@@ -331,6 +337,7 @@ export const buyGoods = (g: GameState, good: CommodityType, want: number): GameS
       gold,
       cargo: { ...g.player.cargo, [good]: g.player.cargo[good] + bought },
       paid: { ...g.player.paid, [good]: (g.player.paid[good] || 0) + spent },
+      boughtIn: { ...(g.player.boughtIn || {}), [good]: port.id },
     },
     ports: g.ports.map(p => (p.id !== port.id ? p : { ...p, market: { ...p.market, [good]: { ...p.market[good], pressure } } })),
   };
@@ -355,10 +362,12 @@ export const sellGoods = (g: GameState, good: CommodityType, want: number): Game
   let pressure = port.market[good].pressure;
   const repBonus = reputationTier(g.player.reputation?.[port.id] || 0).bonus - leagueTax(g.player, port.id);
   const factorBonus = g.player.officers?.includes('quartermaster') ? 0.08 : 0;
+  // Goods bought in this very port sell back for a little less than they cost, whatever your standing.
+  const backCap = g.player.boughtIn?.[good] === port.id && held > 0 ? Math.max(1, Math.floor(((g.player.paid[good] || 0) / held) * 0.95)) : Infinity;
   let earned = 0;
   for (let i = 0; i < count; i++) {
     const raw = rawPriceAt(port, good, g.events, pressure);
-    earned += Math.max(1, Math.floor(raw * SELL_CUT * (1 + repBonus + factorBonus)));
+    earned += Math.min(backCap, Math.max(1, Math.floor(raw * SELL_CUT * (1 + repBonus + factorBonus))));
     pressure = Math.max(PRESSURE_MIN, pressure - PRESSURE_STEP);
   }
   const paidBefore = g.player.paid[good] || 0;
@@ -633,13 +642,40 @@ export const PORT_PRICE: Record<string, number> = {
 };
 /** Standing a port must hold you in before its Harbor Master will sell (Patron). */
 export const PORT_OWN_REP = 80;
-/** A harbour's takings pile up for this many days at most, so you have to come back for them. */
-export const PORT_INCOME_DAYS = 15;
+/** How long a harbour pays nothing after League raiders hit it. */
+export const RAID_DAYS = 10;
 export const portPrice = (id: string) => PORT_PRICE[id] || 40000;
-export const portDailyIncome = (id: string) => Math.round(portPrice(id) * 0.03);
+/** What you can build in a harbour you own. Each costs a fifth of the harbour's price. */
+export const PORT_UPGRADES: { id: string; label: string; description: string }[] = [
+  { id: 'market', label: 'Grand Market', description: 'Daily takings up by a quarter.' },
+  { id: 'customs', label: 'Customs House', description: 'Daily takings up by another quarter.' },
+  { id: 'fort', label: 'Harbour Fort', description: 'League raiders cannot touch it.' },
+  { id: 'lighthouse', label: 'Lighthouse', description: 'No pirate ambushes on your way in.' },
+];
+export const portHas = (p: Player | undefined, id: string, upgradeId: string) => Boolean(p?.portUpgrades?.[id]?.includes(upgradeId));
+export const portUpgradeCost = (id: string) => Math.round(portPrice(id) * 0.2);
+/** With all four built the harbour is a Grand Harbour and earns a further quarter. */
+export const isGrandHarbour = (p: Player | undefined, id: string) => (p?.portUpgrades?.[id]?.length || 0) >= PORT_UPGRADES.length;
+export const portDailyIncome = (id: string, p?: Player) =>
+  Math.round(portPrice(id) * 0.03 * (1 + (portHas(p, id, 'market') ? 0.25 : 0) + (portHas(p, id, 'customs') ? 0.25 : 0) + (isGrandHarbour(p, id) ? 0.25 : 0)));
+export const buyPortUpgrade = (g: GameState, id: string, upgradeId: string): GameState => {
+  const p = g.player;
+  if (!ownsPort(p, id) || p.currentPortId !== id || portHas(p, id, upgradeId) || !PORT_UPGRADES.some(u => u.id === upgradeId) || p.gold < portUpgradeCost(id)) return g;
+  return { ...g, player: { ...p, gold: p.gold - portUpgradeCost(id), portUpgrades: { ...p.portUpgrades, [id]: [...(p.portUpgrades?.[id] || []), upgradeId] } } };
+};
 export const ownsPort = (p: Player, id: string) => p.ownedPorts?.[id] !== undefined;
-export const portIncomeDue = (p: Player, id: string) =>
-  ownsPort(p, id) ? clamp(p.gameDay - p.ownedPorts[id], 0, PORT_INCOME_DAYS) * portDailyIncome(id) : 0;
+/** True while a harbour is still recovering from a raid (it pays nothing until then). */
+export const portRaided = (p: Player, id: string) => ownsPort(p, id) && p.ownedPorts[id] > p.gameDay;
+/** What all your harbours pay per day right now. */
+export const portsDailyIncome = (p: Player) =>
+  Object.keys(p.ownedPorts || {}).reduce((sum, id) => sum + (portRaided(p, id) ? 0 : portDailyIncome(id, p)), 0);
+/** Pays every harbour you own for the days that just passed, wherever you are. */
+export const payPorts = (g: GameState, days: number): GameState => {
+  const p = g.player;
+  let paid = 0;
+  for (const id of Object.keys(p.ownedPorts || {})) paid += clamp(p.gameDay - p.ownedPorts[id], 0, days) * portDailyIncome(id, p);
+  return paid ? { ...g, player: { ...p, gold: p.gold + paid } } : g;
+};
 
 export const canBuyPort = (g: GameState, id: string) =>
   g.player.hasWonGame && g.player.currentPortId === id && !ownsPort(g.player, id) &&
@@ -648,14 +684,6 @@ export const canBuyPort = (g: GameState, id: string) =>
 export const buyPort = (g: GameState, id: string): GameState => {
   if (!canBuyPort(g, id)) return g;
   return { ...g, player: { ...g.player, gold: g.player.gold - portPrice(id), ownedPorts: { ...g.player.ownedPorts, [id]: g.player.gameDay } } };
-};
-
-/** Pays out the takings waiting in the port you are standing in. */
-export const collectPortIncome = (g: GameState): GameState => {
-  const id = g.player.currentPortId;
-  const due = portIncomeDue(g.player, id);
-  if (!ownsPort(g.player, id)) return g;
-  return { ...g, player: { ...g.player, gold: g.player.gold + due, ownedPorts: { ...g.player.ownedPorts, [id]: g.player.gameDay } } };
 };
 
 // --- TRADING FLEET: ships that work a route for you (second chapter) ---
@@ -705,6 +733,10 @@ export const traderBlocked = (p: Player, t: TradeShip) => Boolean((t.fromId && l
 export const bestGoods = (g: GameState, t: TradeShip, fromId: string, toId: string) =>
   COMMODITIES.map(good => ({ good, profit: routeProfit(g, t, fromId, toId, good) })).sort((x, y) => y.profit - x.profit).slice(0, 4);
 
+/** Each trading ship needs her own home port: the name of the ship already loading at this port, if any. */
+export const portTakenBy = (p: Player, portId: string, exceptShipId?: string) =>
+  (p.traders || []).find(t => t.fromId === portId && t.id !== exceptShipId)?.name || null;
+
 export const buyTrader = (g: GameState, tier: number): GameState => {
   const cls = TRADER_CLASSES.find(c => c.tier === tier && c.tier <= 3);
   const p = g.player;
@@ -714,7 +746,7 @@ export const buyTrader = (g: GameState, tier: number): GameState => {
   // She starts work at once on the best route going today; you can change it whenever you like.
   let best: { a: string; b: string; good: CommodityType; profit: number } | null = null;
   for (const a of g.ports) for (const b of g.ports) {
-    if (a.id === b.id || leagueHolds(p, a.id) || leagueHolds(p, b.id)) continue;
+    if (a.id === b.id || leagueHolds(p, a.id) || leagueHolds(p, b.id) || portTakenBy(p, a.id)) continue;
     const top = bestGoods(g, ship, a.id, b.id)[0];
     if (top.profit > 0 && (!best || top.profit / traderTripDays(g, { ...ship, fromId: a.id, toId: b.id }) > best.profit / traderTripDays(g, { ...ship, fromId: best.a, toId: best.b }))) best = { a: a.id, b: b.id, ...top };
   }
@@ -724,7 +756,7 @@ export const buyTrader = (g: GameState, tier: number): GameState => {
 const patchTrader = (g: GameState, id: string, fn: (t: TradeShip) => TradeShip): GameState =>
   ({ ...g, player: { ...g.player, traders: g.player.traders.map(t => (t.id === id ? fn(t) : t)) } });
 export const setTraderRoute = (g: GameState, id: string, fromId: string, toId: string, good: CommodityType): GameState =>
-  patchTrader(g, id, t => ({ ...t, fromId, toId, good, progress: 0, lastTrip: 0 }));
+  portTakenBy(g.player, fromId, id) ? g : patchTrader(g, id, t => ({ ...t, fromId, toId, good, progress: 0, lastTrip: 0 }));
 /** Fits one of the four upgrades. With all four fitted she is rebuilt as the next class up, like your flagship. */
 export const upgradeTrader = (g: GameState, id: string, upgradeId: string): GameState => {
   const t = g.player.traders.find(x => x.id === id);
@@ -736,8 +768,8 @@ export const upgradeTrader = (g: GameState, id: string, upgradeId: string): Game
   });
 };
 
-/** Moves every trading ship along its route for the days that just passed. Each finished round trip pays straight
- *  into your gold, wherever you are. Her captain carries whatever pays best on that route at the time. */
+/** Every trading ship earns for each day that just passed, wherever you are: her round-trip profit spread over
+ *  the days the trip takes. Her captain carries whatever pays best on her route at the time. */
 export const advanceTraders = (g: GameState, days: number): GameState => {
   if (!g.player.traders?.length) return g;
   let paid = 0;
@@ -745,13 +777,9 @@ export const advanceTraders = (g: GameState, days: number): GameState => {
     const trip = traderTripDays(g, t);
     if (!trip || !t.fromId || !t.toId || traderBlocked(g.player, t)) return t;
     const top = bestGoods(g, t, t.fromId, t.toId)[0];
-    let progress = t.progress + days, strongbox = t.strongbox, lastTrip = t.lastTrip;
-    while (progress >= trip) {
-      progress -= trip;
-      lastTrip = top.profit;
-      if (top.profit > 0) { strongbox += top.profit; paid += top.profit; }
-    }
-    return { ...t, good: top.good, progress, strongbox, lastTrip };
+    const earned = Math.max(0, Math.round((top.profit / trip) * days));
+    paid += earned;
+    return { ...t, good: top.good, progress: (t.progress + days) % trip, strongbox: t.strongbox + earned, lastTrip: top.profit };
   });
   return { ...g, player: { ...g.player, gold: g.player.gold + paid, traders } };
 };
@@ -838,10 +866,11 @@ export const leagueTick = (g: GameState): GameState => {
         lg = { ...lg, ports: { ...lg.ports, [open[0].id]: day } };
         news.push(`The League has bought ${open[0].name}. Prices there are worse for you and its shipyard is closed to you until you beat the captain guarding it.`);
       }
-      const target = mine.filter(x => x.id !== p.currentPortId).map(x => ({ x, due: portIncomeDue({ ...p, ownedPorts: owned }, x.id) })).sort((a, b) => b.due - a.due)[0];
-      if (target && target.due > 0 && !open[0]) {
-        owned = { ...owned, [target.x.id]: day };
-        news.push(`League raiders struck ${target.x.name} and carried off ${target.due.toLocaleString()} gold of your takings.`);
+      const target = mine.filter(x => x.id !== p.currentPortId && !portHas(p, x.id, 'fort') && (owned[x.id] ?? 0) <= day)
+        .sort((x, y) => portDailyIncome(y.id, p) - portDailyIncome(x.id, p))[0];
+      if (target && !open[0]) {
+        owned = { ...owned, [target.id]: day + RAID_DAYS };
+        news.push(`League raiders struck ${target.name}. It will pay you nothing for ${RAID_DAYS} days. A Harbour Fort would have stopped them.`);
       }
       lg = { ...lg, nextMoveDay: lg.nextMoveDay + LEAGUE_PACE };
     }
@@ -1358,6 +1387,7 @@ const newPlayer = (): Player => {
     hasReadPrologue: false,
     hasWonGame: false,
     ownedPorts: {},
+    portUpgrades: {},
     hasWonEmpire: false,
     league: emptyLeague(),
     traders: [],
@@ -1394,6 +1424,7 @@ export const loadGame = (): GameState => {
       officers: Array.isArray(savedPlayer.officers) ? savedPlayer.officers : [],
       contracts: Array.isArray(savedPlayer.contracts) ? savedPlayer.contracts : [],
       ownedPorts: savedPlayer.ownedPorts && typeof savedPlayer.ownedPorts === 'object' ? savedPlayer.ownedPorts : {},
+      portUpgrades: savedPlayer.portUpgrades && typeof savedPlayer.portUpgrades === 'object' ? savedPlayer.portUpgrades : {},
       traders: Array.isArray(savedPlayer.traders)
         ? (savedPlayer.traders as any[]).map(t => ({ ...t, upgrades: Array.isArray(t.upgrades) ? t.upgrades : [...(t.holdLvl ? ['hull'] : []), ...(t.sailLvl ? ['sails'] : [])] }))
         : [],

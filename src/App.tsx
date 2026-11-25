@@ -25,7 +25,8 @@ import {
   PIRATE_REP, REP_STEPS, sellRepGain,
   LEAGUE_NAME, LEAGUE_FLAGSHIP, leagueHolds, leagueCaptain, isLeagueRival, flagshipReady, leagueTick, leagueBeaten,
   buyTrader, setTraderRoute, upgradeTrader, advanceTraders, traderLeg, MAX_TRADERS, TRADER_CLASSES,
-  PORT_OWN_REP, portPrice, portDailyIncome, ownsPort, portIncomeDue, canBuyPort, buyPort, collectPortIncome,
+  PORT_UPGRADES, portHas, portUpgradeCost, isGrandHarbour, buyPortUpgrade,
+  PORT_OWN_REP, portPrice, portDailyIncome, ownsPort, canBuyPort, buyPort, payPorts, portsDailyIncome, fleetDailyIncome, portRaided,
   computeSeaRoute, pointAlongRoute, routeToSmoothPath, smoothRoute, totalCargoCapacity, totalFirepower, effectiveSpeed, reputationTier,
   acceptContract, claimContract, rollSeaEvent,
   getUpgradesForTier, applyUpgrade, generateEnemy, generateLoot, generateRivalEnemy,
@@ -136,6 +137,8 @@ const App: React.FC = () => {
   const [portOffer, setPortOffer] = useState(false);
   const [repOpen, setRepOpen] = useState(false);
   const [pillPressed, setPillPressed] = useState(false);
+  const [portWorks, setPortWorks] = useState(false);
+  const payRef = useRef({ ports: 0, ships: 0 });
   const [yardOpen, setYardOpen] = useState<string | null>('flagship');
   const [toast, setToast] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(audioManager.getMuted());
@@ -212,6 +215,7 @@ const App: React.FC = () => {
   const allRivalsDefeated = SYNDICATE_RIVALS.every(r => player.defeatedRivals.includes(r.id));
   const ownedCount = ports.filter(p => ownsPort(player, p.id)).length;
   const ownsHere = ownsPort(player, currentPort.id);
+  const dailyIncome = Math.round(portsDailyIncome(player) + fleetDailyIncome(g));   // what your harbours and ships bring in per day
   const leagueHere = leagueHolds(player, currentPort.id);
   const repPts = player.reputation?.[currentPort.id] || 0;
   const repNext = REP_STEPS.find(st => st.at > repPts) || null;
@@ -581,18 +585,23 @@ const App: React.FC = () => {
       const names = lapsed.map(c => `${c.amount} ${c.good} to ${gRef.current.ports.find(p => p.id === c.toPortId)?.name || c.toPortId}`).join(', ');
       setTimeout(() => say(`Charter expired: ${names}. The deadline passed at sea.`), 2600);
     }
-    const p0 = gRef.current.player;
-    const takings = portIncomeDue({ ...p0, gameDay: arrivalDay }, destId);
-    if (takings > 0) setTimeout(() => say(`Your harbour in ${dest?.name || 'port'} paid you ${takings.toLocaleString()} gold.`), lapsed.length ? 6200 : 2600);
-    // Worked out once, here, so the fleet's pay can be announced with the right figure.
-    const sailed = collectPortIncome(advanceDays({
-      ...gRef.current,
-      player: { ...p0, currentPortId: destId, gameDay: arrivalDay, voyages: p0.voyages + 1 },
-    }, days));
-    const traded = advanceTraders(sailed, days);
-    const fleetPay = traded.player.gold - sailed.player.gold;
-    if (fleetPay > 0) setTimeout(() => say(`Your trading ships earned ${fleetPay.toLocaleString()} gold while you sailed.`), (lapsed.length ? 6200 : 2600) + (takings > 0 ? 3600 : 0));
-    setG(leagueTick(traded));
+    // Everything you own pays for the days that just passed, wherever you landed.
+    setG(prev => {
+      const sailed = advanceDays({
+        ...prev,
+        player: { ...prev.player, currentPortId: destId, gameDay: prev.player.gameDay + days, voyages: prev.player.voyages + 1 },
+      }, days);
+      const ported = payPorts(sailed, days);
+      const traded = advanceTraders(ported, days);
+      payRef.current = { ports: ported.player.gold - sailed.player.gold, ships: traded.player.gold - ported.player.gold };
+      return leagueTick(traded);
+    });
+    setTimeout(() => {
+      const { ports: fromPorts, ships: fromShips } = payRef.current;
+      if (fromPorts + fromShips <= 0) return;
+      const parts = [fromPorts > 0 ? `harbours +${fromPorts.toLocaleString()}` : '', fromShips > 0 ? `ships +${fromShips.toLocaleString()}` : ''].filter(Boolean).join(', ');
+      say(`${days} ${days === 1 ? 'day' : 'days'} at sea: ${parts} gold.`);
+    }, lapsed.length ? 6200 : 2600);
 
     setIsTraveling(false);
     setTargetPortId(null);
@@ -708,7 +717,7 @@ const App: React.FC = () => {
     setWakeParticles([]);
     setSailingShipPos(routePts[0]);
 
-    const ambushed = rollAmbush(dest, days, player.voyages, weather);
+    const ambushed = !portHas(player, dest.id, 'lighthouse') && rollAmbush(dest, days, player.voyages, weather);
     const seaEvent = !ambushed ? rollSeaEvent(player.voyages) : null;
 
     if (ambushed) {
@@ -1008,7 +1017,9 @@ const App: React.FC = () => {
           <div className="flex flex-col min-w-0">
             <span className="text-xl font-black text-[#f8d77d] tracking-tight leading-none flex items-center gap-1">
               <Gold n={player.gold} />
-              <span className="text-[#bda57a] text-[11px] font-bold">/ {GOAL.toLocaleString()}</span>
+              {player.hasWonGame
+                ? <span className="text-[#7fe0a0] text-[11px] font-bold">+{dailyIncome.toLocaleString()}/day</span>
+                : <span className="text-[#bda57a] text-[11px] font-bold">/ {GOAL.toLocaleString()}</span>}
             </span>
             <span className="text-[10px] text-[#d6c29f] font-bold uppercase tracking-widest mt-1 truncate">
               {player.hasWonGame ? `Day ${player.gameDay} · Ports ${ownedCount}/${ports.length}` : `${rank} · Day ${player.gameDay} · Syndicate ${player.defeatedRivals.length}/${SYNDICATE_RIVALS.length}`}
@@ -1169,9 +1180,10 @@ const App: React.FC = () => {
                 const fight = !isEditMode && (leagueHere || (flagshipHere && ownsHere));
                 const buy = !isEditMode && !fight && player.hasWonGame && !ownsHere;
                 const canBuy = buy && canBuyPort(g, currentPort.id);
-                const action = fight || buy;
+                const improve = !isEditMode && !fight && ownsHere && !isGrandHarbour(player, currentPort.id);
+                const action = fight || buy || improve;
                 return (
-                  <div className={`pointer-events-auto rounded-full shadow-xl flex items-stretch ${fight ? 'bg-[#a72d22]' : buy ? (canBuy ? 'bg-[#f5c749]' : 'bg-[#8a6a2c]') : ''}`}>
+                  <div className={`pointer-events-auto rounded-full shadow-xl flex items-stretch ${fight ? 'bg-[#a72d22]' : buy ? (canBuy ? 'bg-[#f5c749]' : 'bg-[#8a6a2c]') : improve ? 'bg-[#16626d]' : ''}`}>
                     <button
                       onClick={() => { audioManager.playSfx('click'); setRepOpen(true); }}
                       aria-label="Your standing here"
@@ -1191,13 +1203,14 @@ const App: React.FC = () => {
                           setTimeout(() => {
                             setPillPressed(false);
                             if (fight) handleHuntRival(leagueHere ? leagueCaptain(currentPort) : LEAGUE_FLAGSHIP);
+                            else if (improve) setPortWorks(true);
                             else setPortOffer(true);
                           }, 230);
                         }}
                         style={{ transition: 'padding 200ms cubic-bezier(.2,1.6,.4,1), font-size 200ms cubic-bezier(.2,1.6,.4,1)' }}
-                        className={`font-display font-black uppercase tracking-wider ${pillPressed ? 'pl-4 pr-7 text-[16px]' : 'pl-2.5 pr-3.5 text-[12px]'} ${fight ? 'text-white' : canBuy ? 'text-[#3a2206]' : 'text-[#fff1cf]'}`}
+                        className={`font-display font-black uppercase tracking-wider ${pillPressed ? 'pl-4 pr-7 text-[16px]' : 'pl-2.5 pr-3.5 text-[12px]'} ${fight || improve ? 'text-white' : canBuy ? 'text-[#3a2206]' : 'text-[#fff1cf]'}`}
                       >
-                        {fight ? (leagueHere ? 'Free It' : 'Fight') : 'Buy'}
+                        {fight ? (leagueHere ? 'Free It' : 'Fight') : improve ? 'Improve' : 'Buy'}
                       </button>
                     )}
                   </div>
@@ -1224,7 +1237,7 @@ const App: React.FC = () => {
                         : hullLow && !leagueHere
                           ? 'Your hull is dangerously low. Repair at the Shipyard before sailing.'
                         : ownsHere
-                          ? `Your harbour. It earns ${portDailyIncome(currentPort.id).toLocaleString()} gold a day and repairs are free.`
+                          ? (portRaided(player, currentPort.id) ? 'Your harbour is recovering from a League raid and pays nothing for now.' : `Your harbour. It earns ${portDailyIncome(currentPort.id, player).toLocaleString()} gold a day and repairs are free.`)
                           : routeTip(currentPort, ports, events)}
                     </p>
                   </div>
@@ -1970,6 +1983,29 @@ const App: React.FC = () => {
               <div className="flex justify-between"><span>Deliver a charter here</span><span className="text-[#146c54]">+15</span></div>
               <div className="flex justify-between"><span>Beat pirates on the way</span><span className="text-[#146c54]">+{PIRATE_REP}</span></div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* IMPROVE A HARBOUR YOU OWN */}
+      {portWorks && (
+        <div className="absolute inset-0 bg-[#0c161f]/85 z-50 flex items-center justify-center p-5 anim-fade" onClick={() => setPortWorks(false)}>
+          <div className="parchment p-4 rounded-3xl w-full max-w-sm space-y-2.5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-baseline justify-between">
+              <h2 className="font-display text-lg font-black uppercase text-[#8a4d09]">Improve {currentPort.name}</h2>
+              <span className="text-[11px] font-bold text-[#146c54]">{portDailyIncome(currentPort.id, player).toLocaleString()} a day</span>
+            </div>
+            <p className="text-[11px] text-[#5d4229]">Build all four to make it a Grand Harbour: a further quarter on its takings.</p>
+            {PORT_UPGRADES.map(u => (
+              <UpgradeRow key={u.id} label={u.label} description={u.description} cost={portUpgradeCost(currentPort.id)} ownedLabel="Built"
+                owned={portHas(player, currentPort.id, u.id)} canAfford={player.gold >= portUpgradeCost(currentPort.id)}
+                onBuy={() => {
+                  audioManager.playSfx('coin');
+                  const last = (player.portUpgrades?.[currentPort.id]?.length || 0) === PORT_UPGRADES.length - 1;
+                  setG(prev => buyPortUpgrade(prev, currentPort.id, u.id));
+                  if (last) { setPortWorks(false); audioManager.playSfx('victory'); say(`${currentPort.name} is now a Grand Harbour.`); }
+                }} />
+            ))}
           </div>
         </div>
       )}

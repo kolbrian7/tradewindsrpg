@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { GameState, TradeShip, CommodityType } from '../game';
 import {
-  TRADER_CLASSES, TRADER_UPGRADES, traderClass, traderHold, traderUpgradeCost, traderTripDays, traderBlocked, bestGoods,
+  TRADER_CLASSES, TRADER_UPGRADES, traderClass, traderHold, traderUpgradeCost, traderTripDays, traderBlocked, bestGoods, portTakenBy,
 } from '../game';
 import { ShipArt } from './ShipArt';
 import { CommodityIcon } from './Icons';
@@ -53,7 +53,9 @@ export const TraderCard: React.FC<{
 }> = ({ g, ship: t, open, onToggle, onRoute, onUpgrade }) => {
   const { player, ports } = g;
   const [routing, setRouting] = useState(false);
-  const [fromId, setFromId] = useState<string>(t.fromId || player.currentPortId);
+  const freeHome = (id: string) => !portTakenBy(player, id, t.id);
+  const firstFree = () => t.fromId || (freeHome(player.currentPortId) ? player.currentPortId : ports.find(p => freeHome(p.id))?.id || player.currentPortId);
+  const [fromId, setFromId] = useState<string>(firstFree);
   const [toId, setToId] = useState<string | null>(t.toId);
   const name = (id: string | null) => ports.find(p => p.id === id)?.name || '—';
   const daily = dailyOf(g, t);
@@ -73,7 +75,7 @@ export const TraderCard: React.FC<{
           {t.good && <CommodityIcon good={t.good} className="w-5 h-5 shrink-0" />}
           <span className="truncate">{cls.shipClass} · hold {traderHold(t)}{t.good ? ` · carrying ${t.good}` : ''}</span>
         </span>
-        <button onClick={() => { setFromId(t.fromId || player.currentPortId); setToId(t.toId); setRouting(true); }} className="btn-teal px-3 py-2 rounded-xl text-[10px] font-black uppercase shrink-0">Change Route</button>
+        <button onClick={() => { setFromId(firstFree()); setToId(t.toId); setRouting(true); }} className="btn-teal px-3 py-2 rounded-xl text-[10px] font-black uppercase shrink-0">Change Route</button>
       </div>
       <p className="text-[11px] text-[#5d4229]">{next ? `Fit all four to rebuild her as a ${next.shipClass}.` : 'A Galleon: the finest class there is.'}</p>
       {TRADER_UPGRADES.map(u => (
@@ -91,11 +93,13 @@ export const TraderCard: React.FC<{
                 <div className="grid grid-cols-3 gap-1">
                   {ports.map(p => {
                     const on = (k === 0 ? fromId : toId) === p.id;
-                    const off = k === 1 && p.id === fromId;
+                    const taken = k === 0 ? portTakenBy(player, p.id, t.id) : null;      // another of your ships already loads here
+                    const off = (k === 1 && p.id === fromId) || !!taken;
                     return (
                       <button key={p.id} disabled={off} onClick={() => { if (k === 0) { setFromId(p.id); if (toId === p.id) setToId(null); } else setToId(p.id); }}
                         className={`rounded-lg py-1.5 text-[10px] font-black uppercase border ${on ? 'bg-[#16626d] text-white border-[#16626d]' : 'bg-white/50 text-[#2b1d12] border-[#b9975a]'} disabled:opacity-30`}>
                         {p.name}
+                        {taken && <span className="block text-[7px] normal-case font-bold leading-none">{taken}</span>}
                       </button>
                     );
                   })}

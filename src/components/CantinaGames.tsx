@@ -394,6 +394,9 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
             {/* CAPTAIN'S DICE ON ILLUSTRATED TAVERN TABLE */}
             {activeGame === 'dice' && (
               <div className="space-y-3">
+                <p className="text-[12px] font-semibold leading-snug text-center text-[#4d3722] px-2">
+                  Roll two dice and beat the barkeep's total. You may reroll your lower die once. A tie goes to the house.
+                </p>
                 <div className="relative rounded-2xl overflow-hidden border-2 border-[#a87e3b] shadow-xl aspect-[5/6] -mx-2">
                   {/* the tray is zoomed in so the felt is big enough to hold all four dice */}
                   <img
