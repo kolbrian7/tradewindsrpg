@@ -118,6 +118,9 @@ export interface Player {
   gameDay: number;
   hasReadPrologue: boolean;
   hasWonGame: boolean;
+  /** Second chapter: harbours you have bought, each with the day its takings were last collected. */
+  ownedPorts: Record<string, number>;
+  hasWonEmpire: boolean;
   seenGuide: boolean;
   voyages: number;
 }
@@ -306,6 +309,16 @@ export const buyGoods = (g: GameState, good: CommodityType, want: number): GameS
   };
 };
 
+/** Standing earned for selling a port something it is short of: 1 point for every 2 units. */
+export const sellRepGain = (portId: string, good: CommodityType, count: number) =>
+  tradeRole(portId, good) === 'wants' ? Math.ceil(count / 2) : 0;
+/** Standing earned at the port you were bound for when you beat pirates on the way. */
+export const PIRATE_REP = 6;
+/** The four standings, the points each needs and what it gives. */
+export const REP_STEPS: { label: string; at: number }[] = [
+  { label: 'Stranger', at: 0 }, { label: 'Known', at: 20 }, { label: 'Trusted', at: 50 }, { label: 'Patron', at: 80 },
+];
+
 export const sellGoods = (g: GameState, good: CommodityType, want: number): GameState => {
   const port = g.ports.find(p => p.id === g.player.currentPortId);
   if (!port) return g;
@@ -322,11 +335,14 @@ export const sellGoods = (g: GameState, good: CommodityType, want: number): Game
     pressure = Math.max(PRESSURE_MIN, pressure - PRESSURE_STEP);
   }
   const paidBefore = g.player.paid[good] || 0;
+  const repGain = sellRepGain(port.id, good, count);
+  const curRep = g.player.reputation?.[port.id] || 0;
   return {
     ...g,
     player: {
       ...g.player,
       gold: g.player.gold + earned,
+      reputation: repGain ? { ...g.player.reputation, [port.id]: clamp(curRep + repGain, 0, 100) } : g.player.reputation,
       cargo: { ...g.player.cargo, [good]: held - count },
       paid: { ...g.player.paid, [good]: Math.round(paidBefore * ((held - count) / held)) },
     },
@@ -525,9 +541,9 @@ export const voyageDays = (a: Port, b: Port, hasNavigator = false) => {
 
 export const ambushChance = (dest: Port, days: number, voyages: number, weather: WeatherType = 'Fair Seas') => {
   if (voyages < 1) return 0;
-  const perDay = dest.dangerLevel <= 1 ? 0.06 : dest.dangerLevel === 2 ? 0.1 : 0.14;
+  const perDay = dest.dangerLevel <= 1 ? 0.11 : dest.dangerLevel === 2 ? 0.17 : 0.23;
   const weatherMod = weather === 'Tailwind' ? 0.75 : weather === 'Mistral Gale' ? 1.25 : 1;
-  return clamp((1 - Math.pow(1 - perDay, days)) * weatherMod, 0, 0.75);
+  return clamp((1 - Math.pow(1 - perDay, days)) * weatherMod, 0, 0.8);
 };
 
 export const rollAmbush = (dest: Port, days: number, voyages: number, weather: WeatherType = 'Fair Seas') =>
@@ -581,6 +597,38 @@ export const generateContractsForPort = (port: Port, ports: Port[], day: number)
     });
   }
   return out;
+};
+
+// --- SECOND CHAPTER: BUYING THE HARBOURS (opens once the main story is won) ---
+
+export const PORT_PRICE: Record<string, number> = {
+  sardinia: 25000, crete: 30000, tunisia: 30000, nice: 35000, barcelona: 40000, athens: 45000, egypt: 50000, rome: 60000, venice: 80000,
+};
+/** Standing a port must hold you in before its Harbor Master will sell (Patron). */
+export const PORT_OWN_REP = 80;
+/** A harbour's takings pile up for this many days at most, so you have to come back for them. */
+export const PORT_INCOME_DAYS = 15;
+export const portPrice = (id: string) => PORT_PRICE[id] || 40000;
+export const portDailyIncome = (id: string) => Math.round(portPrice(id) * 0.03);
+export const ownsPort = (p: Player, id: string) => p.ownedPorts?.[id] !== undefined;
+export const portIncomeDue = (p: Player, id: string) =>
+  ownsPort(p, id) ? clamp(p.gameDay - p.ownedPorts[id], 0, PORT_INCOME_DAYS) * portDailyIncome(id) : 0;
+
+export const canBuyPort = (g: GameState, id: string) =>
+  g.player.hasWonGame && g.player.currentPortId === id && !ownsPort(g.player, id) &&
+  (g.player.reputation?.[id] || 0) >= PORT_OWN_REP && g.player.gold >= portPrice(id);
+
+export const buyPort = (g: GameState, id: string): GameState => {
+  if (!canBuyPort(g, id)) return g;
+  return { ...g, player: { ...g.player, gold: g.player.gold - portPrice(id), ownedPorts: { ...g.player.ownedPorts, [id]: g.player.gameDay } } };
+};
+
+/** Pays out the takings waiting in the port you are standing in. */
+export const collectPortIncome = (g: GameState): GameState => {
+  const id = g.player.currentPortId;
+  const due = portIncomeDue(g.player, id);
+  if (!ownsPort(g.player, id)) return g;
+  return { ...g, player: { ...g.player, gold: g.player.gold + due, ownedPorts: { ...g.player.ownedPorts, [id]: g.player.gameDay } } };
 };
 
 export const acceptContract = (g: GameState, contractId: string): GameState => {
@@ -1081,6 +1129,8 @@ const newPlayer = (): Player => {
     gameDay: 1,
     hasReadPrologue: false,
     hasWonGame: false,
+    ownedPorts: {},
+    hasWonEmpire: false,
     seenGuide: false,
     voyages: 0,
   };
@@ -1113,6 +1163,7 @@ export const loadGame = (): GameState => {
       escorts: Array.isArray(savedPlayer.escorts) ? savedPlayer.escorts : [],
       officers: Array.isArray(savedPlayer.officers) ? savedPlayer.officers : [],
       contracts: Array.isArray(savedPlayer.contracts) ? savedPlayer.contracts : [],
+      ownedPorts: savedPlayer.ownedPorts && typeof savedPlayer.ownedPorts === 'object' ? savedPlayer.ownedPorts : {},
       reputation: savedPlayer.reputation && typeof savedPlayer.reputation === 'object' ? savedPlayer.reputation : {},
       defeatedRivals: Array.isArray(savedPlayer.defeatedRivals) ? savedPlayer.defeatedRivals : [],
       cargo: { ...emptyCargo(), ...(savedPlayer.cargo || {}) },

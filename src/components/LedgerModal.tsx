@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { GameState, RivalDef } from '../game';
-import { SYNDICATE_RIVALS, PORT_TRADE, reputationTier, netWorth, voyageDays } from '../game';
+import { SYNDICATE_RIVALS, PORT_TRADE, reputationTier, netWorth, voyageDays, ownsPort, portPrice, portDailyIncome, portIncomeDue } from '../game';
 import { CommodityIcon, IconCoin, IconLedger, IconScroll, IconSkull, IconStar } from './Icons';
 
 interface LedgerModalProps {
@@ -201,6 +201,13 @@ export const LedgerModal: React.FC<LedgerModalProps> = ({
                         {rep.label} ({player.reputation?.[p.id] || 0})
                       </span>
                     </div>
+                    {player.hasWonGame && (
+                      <div className="text-[11px] font-bold text-[#7d4f0a]">
+                        {ownsPort(player, p.id)
+                          ? `⚑ Yours · ${portDailyIncome(p.id).toLocaleString()} gold a day · ${portIncomeDue(player, p.id).toLocaleString()} waiting`
+                          : `For sale: ${portPrice(p.id).toLocaleString()} gold, Patron standing needed`}
+                      </div>
+                    )}
                     {t && (
                       <div className="text-[11px] leading-snug text-[#4d3722]">
                         <div><strong className="text-[#146c54]">Cheap:</strong> {t.makes.join(', ')}</div>

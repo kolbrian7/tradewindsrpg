@@ -8,6 +8,7 @@ import type { BattleData } from './components/BattleStage';
 import { CantinaGames } from './components/CantinaGames';
 import type { PubGameType } from './components/CantinaGames';
 import { LedgerModal } from './components/LedgerModal';
+import { Celebration } from './components/Celebration';
 import { VoyageEventModal } from './components/VoyageEventModal';
 import {
   CommodityIcon, IconScales, IconHammer, IconCompass,
@@ -20,6 +21,8 @@ import {
   OFFICERS, ESCORTS, SYNDICATE_RIVALS,
   loadGame, saveGame, clearSave, buyGoods, sellGoods, buyPrice, sellPrice, cargoCount, netWorth, rankFor,
   advanceDays, learnRumor, voyageDays, rollAmbush, rollWeather, routeTip, tradeRole, emptyCargo, pickMinigame,
+  PIRATE_REP, REP_STEPS, sellRepGain,
+  PORT_OWN_REP, portPrice, portDailyIncome, ownsPort, portIncomeDue, canBuyPort, buyPort, collectPortIncome,
   computeSeaRoute, pointAlongRoute, routeToSmoothPath, smoothRoute, totalCargoCapacity, totalFirepower, effectiveSpeed, reputationTier,
   acceptContract, claimContract, rollSeaEvent,
   getUpgradesForTier, applyUpgrade, generateEnemy, generateLoot, generateRivalEnemy,
@@ -127,6 +130,7 @@ const App: React.FC = () => {
   const [ledgerOpen, setLedgerOpen] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [notice, setNotice] = useState<{ title: string; body: string } | null>(null);
+  const [portOffer, setPortOffer] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(audioManager.getMuted());
   const [evolved, setEvolved] = useState<{ oldClass: string; ship: Ship } | null>(null);
@@ -201,6 +205,9 @@ const App: React.FC = () => {
   );
   const ledgerAlert = Boolean(readyContract || readyRival);
   const allRivalsDefeated = SYNDICATE_RIVALS.every(r => player.defeatedRivals.includes(r.id));
+  const ownedCount = ports.filter(p => ownsPort(player, p.id)).length;
+  const ownsHere = ownsPort(player, currentPort.id);
+  const empireReached = player.hasWonGame && ownedCount === ports.length && !player.hasWonEmpire && tab !== 'battle';
   const victoryReached = player.gold >= GOAL && allRivalsDefeated && !player.hasWonGame && tab !== 'battle';
 
   const say = (text: string) => setToast(text);
@@ -241,6 +248,8 @@ const App: React.FC = () => {
     if (after === before) return;
     audioManager.playSfx('coin');
     setG(prev => sellGoods(prev, good, count));
+    const gained = sellRepGain(currentPort.id, good, Math.min(count, before.player.cargo[good]));
+    if (gained && (before.player.reputation?.[currentPort.id] || 0) < 100) say(`${currentPort.name} wanted that ${good}. +${gained} standing here.`);
   };
 
   const sellAllCargo = () => {
@@ -300,21 +309,24 @@ const App: React.FC = () => {
   // --- SHIPYARD & FLEET ---
 
   const hullDamage = flagship.hullHealth.max - flagship.hullHealth.current;
-  const repairPoints = Math.min(hullDamage, Math.floor(player.gold / REPAIR_COST_PER_POINT));
-  const repairCost = repairPoints * REPAIR_COST_PER_POINT;
+  const repairRate = ownsPort(player, player.currentPortId) ? 0 : REPAIR_COST_PER_POINT;   // free in a harbour you own
+  const repairPoints = repairRate ? Math.min(hullDamage, Math.floor(player.gold / repairRate)) : hullDamage;
+  const repairCost = repairPoints * repairRate;
 
   const repair = () => {
     if (repairPoints <= 0) return;
     audioManager.playSfx('coin');
     setG(prev => {
       const ship = prev.player.fleet[0];
-      const points = Math.min(ship.hullHealth.max - ship.hullHealth.current, Math.floor(prev.player.gold / REPAIR_COST_PER_POINT));
+      const rate = ownsPort(prev.player, prev.player.currentPortId) ? 0 : REPAIR_COST_PER_POINT;
+      const missing = ship.hullHealth.max - ship.hullHealth.current;
+      const points = rate ? Math.min(missing, Math.floor(prev.player.gold / rate)) : missing;
       if (points <= 0) return prev;
       return {
         ...prev,
         player: {
           ...prev.player,
-          gold: prev.player.gold - points * REPAIR_COST_PER_POINT,
+          gold: prev.player.gold - points * rate,
           fleet: [{ ...ship, hullHealth: { ...ship.hullHealth, current: ship.hullHealth.current + points } }],
         },
       };
@@ -503,10 +515,13 @@ const App: React.FC = () => {
       const names = lapsed.map(c => `${c.amount} ${c.good} to ${gRef.current.ports.find(p => p.id === c.toPortId)?.name || c.toPortId}`).join(', ');
       setTimeout(() => say(`Charter expired: ${names}. The deadline passed at sea.`), 2600);
     }
-    setG(prev => advanceDays({
+    const p0 = gRef.current.player;
+    const takings = portIncomeDue({ ...p0, gameDay: arrivalDay }, destId);
+    if (takings > 0) setTimeout(() => say(`Your harbour in ${dest?.name || 'port'} paid you ${takings.toLocaleString()} gold.`), lapsed.length ? 6200 : 2600);
+    setG(prev => collectPortIncome(advanceDays({
       ...prev,
       player: { ...prev.player, currentPortId: destId, gameDay: prev.player.gameDay + days, voyages: prev.player.voyages + 1 },
-    }, days));
+    }, days)));
     setIsTraveling(false);
     setTargetPortId(null);
     setSelectedPortId(null);
@@ -677,6 +692,7 @@ const App: React.FC = () => {
         ...prev.player,
         gold: prev.player.gold + goldWon,
         cargo: { ...prev.player.cargo, [b.loot.good]: prev.player.cargo[b.loot.good] + taken },
+        reputation: { ...prev.player.reputation, [b.destId]: Math.min(100, (prev.player.reputation?.[b.destId] || 0) + PIRATE_REP) },
         defeatedRivals: b.rival && !prev.player.defeatedRivals.includes(b.rival.id)
           ? [...prev.player.defeatedRivals, b.rival.id]
           : prev.player.defeatedRivals,
@@ -690,7 +706,7 @@ const App: React.FC = () => {
       enemy: { ...b.enemy, hullHealth: { ...b.enemy.hullHealth, current: 0 } },
       phase: 'won',
       tone: 'good',
-      log: `${verb} Took ${goldWon.toLocaleString()} gold${cargoLine}.`,
+      log: `${verb} Took ${goldWon.toLocaleString()} gold${cargoLine}. +${PIRATE_REP} standing in ${gRef.current.ports.find(x => x.id === b.destId)?.name || 'port'}.`,
     });
   };
 
@@ -916,7 +932,7 @@ const App: React.FC = () => {
               <span className="text-[#bda57a] text-[11px] font-bold">/ {GOAL.toLocaleString()}</span>
             </span>
             <span className="text-[10px] text-[#d6c29f] font-bold uppercase tracking-widest mt-1 truncate">
-              {rank} · Day {player.gameDay} · Syndicate {player.defeatedRivals.length}/{SYNDICATE_RIVALS.length}
+              {player.hasWonGame ? `Day ${player.gameDay} · Ports ${ownedCount}/${ports.length}` : `${rank} · Day ${player.gameDay} · Syndicate ${player.defeatedRivals.length}/${SYNDICATE_RIVALS.length}`}
             </span>
           </div>
 
@@ -1069,12 +1085,25 @@ const App: React.FC = () => {
             {/* Top Port Crest */}
             <div className="absolute top-2.5 left-0 right-0 flex flex-col items-center pointer-events-none z-30 px-4">
               <div className="bg-[#1d120b]/85 backdrop-blur-sm border border-[#c8963e]/70 rounded-full px-4 py-1 shadow-xl flex items-center gap-2">
+                {ownsHere && <span title="Your harbour" className="text-[#f8d77d] text-base leading-none">⚑</span>}
                 <h1 className="font-display text-lg font-black uppercase tracking-widest text-[#f8d77d]">
                   {currentPort.name}
                 </h1>
-                <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#16626d] text-[#e6fbff]">
-                  {currentRep.label}
-                </span>
+                <button
+                  onClick={() => {
+                    audioManager.playSfx('click');
+                    const pts = player.reputation?.[currentPort.id] || 0;
+                    const next = REP_STEPS.find(s => s.at > pts);
+                    setNotice({
+                      title: `${currentRep.label} in ${currentPort.name}`,
+                      body: `Standing ${pts}/100${next ? `, ${next.at - pts} more to become ${next.label}` : ', the highest there is'}. Higher standing means cheaper buying and better selling here (Known 2.5%, Trusted 5%, Patron 8%). Earn it three ways: sell this port what it pays well for (+1 per 2 units), deliver charters here (+15 or more), and sink pirates on your way in (+${PIRATE_REP}).`,
+                    });
+                  }}
+                  className="pointer-events-auto text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#16626d] text-[#e6fbff] flex items-center gap-1"
+                >
+                  {currentRep.label} {player.reputation?.[currentPort.id] || 0}
+                  <span className="opacity-70">ⓘ</span>
+                </button>
               </div>
               {hasLayeredScene && !isEditMode && (
                 <button
@@ -1106,6 +1135,10 @@ const App: React.FC = () => {
                     <p className="text-xs font-semibold text-[#2b1d12] leading-snug">
                       {readyContract
                         ? `Deliver ${readyContract.amount} ${readyContract.good} for ${readyContract.rewardGold.toLocaleString()} gold!`
+                        : player.hasWonGame && !ownsHere
+                          ? `This harbour can be yours for ${portPrice(currentPort.id).toLocaleString()} gold${(player.reputation?.[currentPort.id] || 0) >= PORT_OWN_REP ? '.' : ' once you are a Patron here.'}`
+                        : ownsHere && !hullLow
+                          ? `Your harbour. It earns ${portDailyIncome(currentPort.id).toLocaleString()} gold a day and repairs are free.`
                         : hullLow
                           ? 'Your hull is dangerously low. Repair at the Shipyard before sailing.'
                           : routeTip(currentPort, ports, events)}
@@ -1117,6 +1150,13 @@ const App: React.FC = () => {
                       className="btn-brass px-3 py-2 rounded-xl text-[10px] font-black uppercase shrink-0"
                     >
                       Claim
+                    </button>
+                  ) : player.hasWonGame && !ownsHere ? (
+                    <button
+                      onClick={() => { audioManager.playSfx('click'); setPortOffer(true); }}
+                      className="btn-brass px-3 py-2 rounded-xl text-[10px] font-black uppercase shrink-0"
+                    >
+                      Buy Port
                     </button>
                   ) : (
                     <button
@@ -1199,6 +1239,9 @@ const App: React.FC = () => {
                             alt=""
                             draggable="false"
                           />
+                          {ownsPort(player, p.id) && (
+                            <span className="absolute -top-2 -left-1.5 text-[15px] leading-none text-[#f8d77d] drop-shadow-[0_1px_1px_#000]">⚑</span>
+                          )}
                           {(hasContractHere || hasRumorHere || hasRivalHere) && (
                             <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#1d120b] border border-[#e8be63] flex items-center justify-center text-[#f8d77d]">
                               {hasContractHere ? <IconScroll className="w-2.5 h-2.5" /> : hasRivalHere ? <IconSkull className="w-2.5 h-2.5 text-[#f06458]" /> : <IconStar className="w-2.5 h-2.5" />}
@@ -1530,7 +1573,7 @@ const App: React.FC = () => {
                   disabled={repairPoints <= 0}
                   className="w-full btn-teal disabled:opacity-40 py-3 rounded-xl font-display font-black uppercase tracking-wider text-xs flex items-center justify-center gap-2"
                 >
-                  {hullDamage <= 0 ? 'Hull Is Sound' : repairPoints <= 0 ? 'Not Enough Gold to Repair' : (<>Repair Hull <Gold n={repairCost} /></>)}
+                  {hullDamage <= 0 ? 'Hull Is Sound' : repairPoints <= 0 ? 'Not Enough Gold to Repair' : repairCost === 0 ? 'Repair Hull (Free in Your Harbour)' : (<>Repair Hull <Gold n={repairCost} /></>)}
                 </button>
               </div>
 
@@ -1850,8 +1893,10 @@ const App: React.FC = () => {
       {/* VICTORY */}
       {victoryReached && (
         <div className="absolute inset-0 bg-[#0c161f]/90 z-50 flex items-center justify-center p-5 anim-fade">
-          <div className="parchment p-6 rounded-3xl max-w-sm w-full text-center space-y-3 max-h-full overflow-y-auto">
-            <h2 className="font-display text-2xl font-black uppercase text-[#8a4d09]">Merchant Prince!</h2>
+          <Celebration />
+          <div className="parchment p-6 rounded-3xl max-w-sm w-full text-center space-y-3 max-h-full overflow-y-auto relative">
+            <div className="text-[11px] font-black uppercase tracking-[0.3em] text-[#146572]">You won</div>
+            <h2 className="font-display text-3xl font-black uppercase text-[#8a4d09]">Merchant Prince!</h2>
             <p className="text-xs text-[#2b1d12] leading-relaxed">
               With Lord Valerio defeated, the Syndicate shattered and {player.gold.toLocaleString()} gold in your coffers, you reclaim your family's honor. Every port from Venice to Egypt salutes your flagship.
             </p>
@@ -1860,7 +1905,75 @@ const App: React.FC = () => {
               <span>{player.gameDay}</span>
             </div>
             <button
-              onClick={() => setG(prev => ({ ...prev, player: { ...prev.player, hasWonGame: true } }))}
+              onClick={() => {
+                setG(prev => ({ ...prev, player: { ...prev.player, hasWonGame: true } }));
+                setNotice({
+                  title: 'A New Chapter',
+                  body: `The Syndicate is gone and its harbours are leaderless. Every Harbor Master will now sell you their port once you are a Patron there (standing ${PORT_OWN_REP}). A harbour you own pays you gold every day, flies your flag and repairs your ship for free. Own all nine to rule the Mediterranean.`,
+                });
+              }}
+              className="w-full btn-teal py-3 rounded-xl font-display font-black uppercase tracking-wider text-xs"
+            >
+              Keep Sailing: Buy the Harbours
+            </button>
+            <button onClick={restartGame} className="w-full btn-brass py-3.5 rounded-xl font-display font-black uppercase tracking-wider text-xs">
+              Start a New Voyage
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* SECOND CHAPTER: BUY THIS HARBOUR */}
+      {portOffer && (() => {
+        const pts = player.reputation?.[currentPort.id] || 0;
+        const price = portPrice(currentPort.id);
+        const repOk = pts >= PORT_OWN_REP, goldOk = player.gold >= price;
+        return (
+          <div className="absolute inset-0 bg-[#0c161f]/85 z-50 flex items-center justify-center p-5 anim-fade" onClick={() => setPortOffer(false)}>
+            <div className="parchment p-5 rounded-3xl w-full max-w-sm text-center space-y-3" onClick={e => e.stopPropagation()}>
+              <h2 className="font-display text-xl font-black uppercase text-[#8a4d09]">Buy {currentPort.name}</h2>
+              <p className="text-xs text-[#2b1d12] leading-relaxed">
+                Own this harbour and it pays you {portDailyIncome(currentPort.id).toLocaleString()} gold a day (collected when you dock here, up to 15 days' worth), repairs your ship for free and flies your flag.
+              </p>
+              <div className="parchment-card rounded-xl p-3 space-y-1.5 text-xs font-bold text-[#2b1d12]">
+                <div className="flex justify-between"><span>Price</span><span className={goldOk ? '' : 'text-[#9b251c]'}>{price.toLocaleString()} gold {goldOk ? '✓' : `(you have ${player.gold.toLocaleString()})`}</span></div>
+                <div className="flex justify-between"><span>Standing</span><span className={repOk ? '' : 'text-[#9b251c]'}>Patron {repOk ? '✓' : `(${pts}/${PORT_OWN_REP})`}</span></div>
+              </div>
+              {!repOk && <p className="text-[11px] text-[#654b32]">Raise your standing by selling {currentPort.name} what it pays well for, delivering charters here and sinking pirates on the way in.</p>}
+              <button
+                disabled={!canBuyPort(g, currentPort.id)}
+                onClick={() => {
+                  audioManager.playSfx('victory');
+                  setG(prev => buyPort(prev, currentPort.id));
+                  setPortOffer(false);
+                  say(`${currentPort.name} is yours. Your flag flies over the harbour.`);
+                }}
+                className="w-full btn-brass py-3 rounded-xl font-display font-black uppercase tracking-wider text-xs disabled:opacity-40"
+              >
+                Buy for {price.toLocaleString()}
+              </button>
+              <button onClick={() => setPortOffer(false)} className="w-full btn-teal py-2.5 rounded-xl font-display font-black uppercase tracking-wider text-xs">Not Yet</button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* SECOND CHAPTER WON: ALL NINE HARBOURS */}
+      {empireReached && (
+        <div className="absolute inset-0 bg-[#0c161f]/90 z-50 flex items-center justify-center p-5 anim-fade">
+          <Celebration />
+          <div className="parchment p-6 rounded-3xl max-w-sm w-full text-center space-y-3 relative">
+            <div className="text-[11px] font-black uppercase tracking-[0.3em] text-[#146572]">All nine harbours</div>
+            <h2 className="font-display text-3xl font-black uppercase text-[#8a4d09]">Lord of the Mediterranean!</h2>
+            <p className="text-xs text-[#2b1d12] leading-relaxed">
+              From Barcelona to Egypt, every harbour flies your flag. The family that lost everything now owns the sea.
+            </p>
+            <div className="parchment-card rounded-xl p-3 flex justify-between text-xs font-bold text-[#2b1d12]">
+              <span>Days at Sea</span>
+              <span>{player.gameDay}</span>
+            </div>
+            <button
+              onClick={() => setG(prev => ({ ...prev, player: { ...prev.player, hasWonEmpire: true } }))}
               className="w-full btn-teal py-3 rounded-xl font-display font-black uppercase tracking-wider text-xs"
             >
               Keep Sailing
