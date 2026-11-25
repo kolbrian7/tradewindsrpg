@@ -40,13 +40,20 @@ export const ShipArt: React.FC<ShipArtProps> = ({
 
   return (
     <div className={`relative inline-flex flex-col items-center select-none pointer-events-none origin-bottom ${widthClass} ${className}`}>
-      {/* Subtle animated waterline ripple sitting directly beneath the keel */}
-      <div
-        className="absolute -bottom-[3px] w-[82%] h-[10px] rounded-full animate-water-ripple"
-        style={{
-          background: 'radial-gradient(ellipse at center, rgba(226, 252, 255, 0.55) 0%, rgba(102, 208, 224, 0.35) 55%, rgba(20, 95, 112, 0) 100%)',
-        }}
-      />
+      {/* Water under the keel: a soft shadow, rings that spread out and fade, and a line of foam lapping the hull */}
+      <svg className="absolute left-1/2 -translate-x-1/2 -bottom-[14%] w-[170%] pointer-events-none overflow-visible" viewBox="0 0 200 44" aria-hidden="true">
+        <ellipse cx="100" cy="22" rx="52" ry="5.5" fill="#0a2c40" opacity="0.32" />
+        {[0, 1, 2].map(i => (
+          <ellipse
+            key={i}
+            className="ship-ring"
+            cx="100" cy="22" rx="46" ry="6"
+            fill="none" stroke="#e8fbff" strokeWidth="1.1" vectorEffect="non-scaling-stroke" strokeDasharray="26 9 14 12"
+            style={{ animationDelay: `${-i * 1.5}s` }}
+          />
+        ))}
+        <path className="ship-foam" d="M56 21 q7 -3 14 0 t14 0 t14 0 t14 0 t14 0 t14 0" fill="none" stroke="#f4feff" strokeWidth="1.3" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      </svg>
 
       <div className="w-full" style={{ transform: facing === 'left' ? 'scaleX(-1)' : undefined }}>
         <div className="w-full animate-ship-bob origin-bottom">

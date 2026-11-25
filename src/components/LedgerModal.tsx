@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { GameState, RivalDef } from '../game';
-import { SYNDICATE_RIVALS, PORT_TRADE, reputationTier, netWorth } from '../game';
+import { SYNDICATE_RIVALS, PORT_TRADE, reputationTier, netWorth, voyageDays } from '../game';
 import { CommodityIcon, IconCoin, IconLedger, IconScroll, IconSkull, IconStar } from './Icons';
 
 interface LedgerModalProps {
@@ -23,6 +23,11 @@ export const LedgerModal: React.FC<LedgerModalProps> = ({
   const worth = netWorth(player);
   const localOffers = portContracts[player.currentPortId] || [];
   const portName = (id: string) => ports.find(p => p.id === id)?.name || id;
+  // Days you get once you sign: the sailing time plus eight to spare (the clock starts on signing).
+  const offerDays = (c: { fromPortId: string; toPortId: string }) => {
+    const from = ports.find(p => p.id === c.fromPortId), to = ports.find(p => p.id === c.toPortId);
+    return (from && to ? voyageDays(from, to, false) : 6) + 8;
+  };
 
   return (
     <div className="absolute inset-0 bg-[#0c161f]/85 z-50 flex items-center justify-center p-4 anim-fade" onClick={onClose}>
@@ -121,7 +126,7 @@ export const LedgerModal: React.FC<LedgerModalProps> = ({
                               {c.amount} {c.good} to {portName(c.toPortId)}
                             </div>
                             <div className="text-[11px] font-bold text-[#7d4f0a] flex items-center gap-1 mt-0.5">
-                              <IconCoin className="w-3.5 h-3.5" /> {c.rewardGold.toLocaleString()} · +{c.repGain} rep
+                              <IconCoin className="w-3.5 h-3.5" /> {c.rewardGold.toLocaleString()} · +{c.repGain} rep · {offerDays(c)} days to deliver
                             </div>
                           </div>
                         </div>
@@ -144,7 +149,7 @@ export const LedgerModal: React.FC<LedgerModalProps> = ({
           {sub === 'syndicate' && (
             <div className="space-y-2.5">
               <p className="text-xs text-[#5d4229]">
-                Defeat all four Syndicate captains — or amass 50,000 gold — to reclaim your family honor.
+                Defeat all four Syndicate captains and amass 50,000 gold to reclaim your family honor. You need both.
               </p>
               {SYNDICATE_RIVALS.map(r => {
                 const defeated = player.defeatedRivals.includes(r.id);

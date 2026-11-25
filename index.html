@@ -22,12 +22,21 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      // The offline cache is only for the published game (https). On a local test server it would
+      // keep showing an older copy of the game, so there it is switched off and cleared.
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then((reg) => console.log('Service Worker registered successfully:', reg))
-            .catch((err) => console.error('Service Worker registration failed:', err));
-        });
+        if (location.protocol === 'https:') {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch((err) => console.error('Service Worker registration failed:', err));
+          });
+        } else {
+          navigator.serviceWorker.getRegistrations().then((regs) => {
+            if (!regs.length) return;
+            Promise.all(regs.map((r) => r.unregister()))
+              .then(() => (window.caches ? caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))) : null))
+              .then(() => location.reload());
+          });
+        }
       }
     </script>
   </body>

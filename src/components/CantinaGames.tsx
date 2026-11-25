@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import type { Rumor } from '../game';
 import { IconCoin, IconTankard, IconStar } from './Icons';
 
@@ -30,15 +30,22 @@ const PIP_CELLS: Record<number, number[]> = {
   6: [0, 2, 3, 5, 6, 8],
 };
 
-// Rotations that orient the CSS 3D cube so `value` faces forward
-const FACE_TRANSFORMS: Record<number, string> = {
-  1: 'rotateX(0deg) rotateY(0deg)',
-  2: 'rotateX(-90deg) rotateY(0deg)',
-  3: 'rotateX(0deg) rotateY(-90deg)',
-  4: 'rotateX(0deg) rotateY(90deg)',
-  5: 'rotateX(90deg) rotateY(0deg)',
-  6: 'rotateX(180deg) rotateY(0deg)',
+// Degrees of [rotateX, rotateY] that bring each face of the cube to the front
+const FACE_ROT: Record<number, [number, number]> = {
+  1: [0, 0],
+  2: [-90, 0],
+  3: [0, -90],
+  4: [0, 90],
+  5: [90, 0],
+  6: [180, 0],
 };
+
+// The die rests slightly turned so its top and side show, like a real cube on the felt.
+const diePose = (x: number, y: number, z: number) =>
+  `rotateX(-24deg) rotateY(-26deg) rotateZ(${z}deg) rotateX(${x}deg) rotateY(${y}deg)`;
+
+const ROLL_MS = 1150;
+const COIN_MS = 1500;
 
 const CUBE_FACES: Array<{ val: number; transform: string }> = [
   { val: 1, transform: 'translateZ(26px)' },
@@ -49,33 +56,90 @@ const CUBE_FACES: Array<{ val: number; transform: string }> = [
   { val: 5, transform: 'rotateX(-90deg) translateZ(26px)' },
 ];
 
-const Die3D: React.FC<{ value: number; tone?: 'ivory' | 'crimson'; rolling?: boolean; tilt?: number }> = ({
-  value,
-  tone = 'ivory',
-  rolling = false,
-  tilt = 0,
-}) => (
-  <div className="flex flex-col items-center">
-    <div className={`dice-scene ${rolling ? 'animate-dice-throw' : ''}`}>
-      <div
-        className={`dice-cube ${tone === 'ivory' ? 'dice-ivory' : 'dice-crimson'}`}
-        style={{ transform: `rotateZ(${tilt}deg) ${FACE_TRANSFORMS[value] || FACE_TRANSFORMS[1]}` }}
-      >
-        {CUBE_FACES.map(f => {
-          const pips = PIP_CELLS[f.val];
-          return (
-            <div key={f.val} className="dice-face" style={{ transform: f.transform }}>
-              {Array.from({ length: 9 }, (_, cell) => (
-                <div key={cell} className={pips.includes(cell) ? 'dice-pip' : ''} />
-              ))}
-            </div>
-          );
-        })}
+interface DieProps {
+  value: number;
+  tone?: 'ivory' | 'crimson';
+  rollKey: number; // changes each time this die is thrown; 0 means it has not been thrown yet
+  tilt?: number;
+  delay?: number;
+  from?: 1 | -1; // which side it is thrown in from
+}
+
+/** One die. When rollKey changes it is thrown in, tumbles, bounces twice and settles on `value`. */
+const Die3D: React.FC<DieProps> = ({ value, tone = 'ivory', rollKey, tilt = 0, delay = 0, from = -1 }) => {
+  const moverRef = useRef<HTMLDivElement | null>(null);
+  const cubeRef = useRef<HTMLDivElement | null>(null);
+  const shadowRef = useRef<HTMLDivElement | null>(null);
+  const [fx, fy] = FACE_ROT[value] || FACE_ROT[1];
+
+  useLayoutEffect(() => {
+    const mover = moverRef.current;
+    const cube = cubeRef.current;
+    const shadow = shadowRef.current;
+    if (!rollKey || !mover || !cube || !shadow || !cube.animate) return;
+    const turns = (n: number) => 360 * n * (Math.random() < 0.5 ? 1 : -1);
+    const timing = { duration: ROLL_MS, delay, fill: 'backwards' as const };
+    const running = [
+      // The tumble: several full turns on two axes, slowing into the final face.
+      cube.animate(
+        [
+          { transform: diePose(fx + turns(2), fy + turns(2), tilt + turns(1)) },
+          { transform: diePose(fx, fy, tilt) },
+        ],
+        { ...timing, easing: 'cubic-bezier(0.15, 0.6, 0.25, 1)' },
+      ),
+      // The throw: falls in from the side, then two smaller bounces.
+      mover.animate(
+        [
+          { transform: `translate(${from * 95}px, -120px) scale(1.25)`, opacity: 0, easing: 'ease-in' },
+          { opacity: 1, offset: 0.1 },
+          { transform: `translate(${from * 16}px, 0px) scale(1)`, offset: 0.4, easing: 'ease-out' },
+          { transform: `translate(${from * 7}px, -30px) scale(1.06)`, offset: 0.56, easing: 'ease-in' },
+          { transform: `translate(${from * 2}px, 0px) scale(1)`, offset: 0.72, easing: 'ease-out' },
+          { transform: 'translate(0px, -9px) scale(1.02)', offset: 0.83, easing: 'ease-in' },
+          { transform: 'translate(0px, 0px) scale(1)', opacity: 1 },
+        ],
+        timing,
+      ),
+      shadow.animate(
+        [
+          { transform: `translateX(${from * 95}px) scale(0.3)`, opacity: 0 },
+          { transform: `translateX(${from * 16}px) scale(1)`, opacity: 1, offset: 0.4 },
+          { transform: `translateX(${from * 7}px) scale(0.7)`, opacity: 0.6, offset: 0.56 },
+          { transform: `translateX(${from * 2}px) scale(1)`, opacity: 1, offset: 0.72 },
+          { transform: 'translateX(0px) scale(0.9)', opacity: 0.85, offset: 0.83 },
+          { transform: 'translateX(0px) scale(1)', opacity: 1 },
+        ],
+        timing,
+      ),
+    ];
+    return () => running.forEach(a => a.cancel());
+  }, [rollKey]);
+
+  return (
+    <div className="flex flex-col items-center" style={{ zoom: 0.74 }}>
+      <div ref={moverRef} className="dice-scene">
+        <div
+          ref={cubeRef}
+          className={`dice-cube ${tone === 'ivory' ? 'dice-ivory' : 'dice-crimson'}`}
+          style={{ transform: diePose(fx, fy, tilt) }}
+        >
+          {CUBE_FACES.map(f => {
+            const pips = PIP_CELLS[f.val];
+            return (
+              <div key={f.val} className="dice-face" style={{ transform: f.transform }}>
+                {Array.from({ length: 9 }, (_, cell) => (
+                  <div key={cell} className={pips.includes(cell) ? 'dice-pip' : ''} />
+                ))}
+              </div>
+            );
+          })}
+        </div>
       </div>
+      <div ref={shadowRef} className="w-14 h-3 mt-1.5 rounded-full bg-black/60 blur-[4px] pointer-events-none" />
     </div>
-    <div className="w-12 h-2.5 -mt-0.5 rounded-full bg-black/55 blur-[3px] pointer-events-none" />
-  </div>
-);
+  );
+};
 
 export const CantinaGames: React.FC<CantinaGamesProps> = ({
   gold,
@@ -93,16 +157,25 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
   const [result, setResult] = useState<{ win: boolean; note: string } | null>(null);
 
   // Dice state
-  const [dicePhase, setDicePhase] = useState<'ready' | 'rolled' | 'done'>('ready');
+  const [dicePhase, setDicePhase] = useState<'ready' | 'rolling' | 'rolled' | 'barkeep' | 'done'>('ready');
   const [playerDice, setPlayerDice] = useState<[number, number]>([3, 4]);
   const [barkeepDice, setBarkeepDice] = useState<[number, number]>([3, 3]);
-  const [diceRollKey, setDiceRollKey] = useState(0);
+  const [dieKeys, setDieKeys] = useState<[number, number]>([0, 0]);
   const [rerolledOnce, setRerolledOnce] = useState(false);
+  const rollCount = useRef(0);
 
-  // Coin toss state (cumulative Y rotation so every flip spins cleanly to Sun=0deg mod 360 or Anchor=180deg mod 360)
+  // Coin toss state
   const [coinFlipping, setCoinFlipping] = useState(false);
-  const [coinRotationY, setCoinRotationY] = useState(0);
-  const [coinFlipKey, setCoinFlipKey] = useState(0);
+  const [coinSide, setCoinSide] = useState<'sun' | 'anchor'>('sun');
+  const coinRef = useRef<HTMLDivElement | null>(null);
+  const coinMoverRef = useRef<HTMLDivElement | null>(null);
+  const coinShadowRef = useRef<HTMLDivElement | null>(null);
+
+  // Timers that wait for a throw to finish before showing the outcome
+  const waits = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const after = (ms: number, fn: () => void) => { waits.current.push(setTimeout(fn, ms)); };
+  const clearWaits = () => { waits.current.forEach(clearTimeout); waits.current = []; };
+  useEffect(() => clearWaits, []);
 
   // Arm wrestling state
   const [armPos, setArmPos] = useState(50);
@@ -182,8 +255,9 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
     setResult(null);
     setDicePhase('ready');
     setRerolledOnce(false);
+    setDieKeys([0, 0]);
+    clearWaits();
     setCoinFlipping(false);
-    setCoinRotationY(0);
     armDirRef.current = 1;
     armResolvedRef.current = false;
     armOutcomeRef.current = null;
@@ -206,28 +280,38 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
   const rollMyDice = () => {
     onPlaySfx('click');
     setPlayerDice([d6(), d6()]);
-    setDiceRollKey(k => k + 1);
-    setDicePhase('rolled');
+    setDieKeys([++rollCount.current, ++rollCount.current]);
+    setDicePhase('rolling');
+    after(ROLL_MS + 200, () => setDicePhase('rolled'));
   };
 
   const rerollLowDie = () => {
-    if (rerolledOnce) return;
+    if (rerolledOnce || dicePhase !== 'rolled') return;
     onPlaySfx('click');
     setRerolledOnce(true);
-    setPlayerDice(([a, b]) => (a <= b ? [d6(), b] : [a, d6()]));
-    setDiceRollKey(k => k + 1);
+    const low = playerDice[0] <= playerDice[1] ? 0 : 1;
+    const next: [number, number] = [playerDice[0], playerDice[1]];
+    next[low] = d6();
+    setPlayerDice(next);
+    setDieKeys(keys => (low === 0 ? [++rollCount.current, keys[1]] : [keys[0], ++rollCount.current]));
+    setDicePhase('rolling');
+    after(ROLL_MS + 100, () => setDicePhase('rolled'));
   };
 
   const challengeBarkeep = () => {
+    if (dicePhase !== 'rolled') return;
     onPlaySfx('click');
     const ba = d6();
     const bb = d6();
     setBarkeepDice([ba, bb]);
-    setDiceRollKey(k => k + 1);
-    setDicePhase('done');
+    setDicePhase('barkeep');
     const pSum = playerDice[0] + playerDice[1];
     const bSum = ba + bb;
-    conclude(pSum > bSum, `You rolled ${pSum} vs the barkeep's ${bSum}.`);
+    // Wait for his dice to settle before calling the result.
+    after(ROLL_MS + 350, () => {
+      setDicePhase('done');
+      conclude(pSum > bSum, `You rolled ${pSum} vs the barkeep's ${bSum}.`);
+    });
   };
 
   // --- COIN TOSS LOGIC ---
@@ -235,17 +319,39 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
     if (coinFlipping) return;
     onPlaySfx('coin');
     setCoinFlipping(true);
-    setCoinFlipKey(k => k + 1);
     const landed: 'sun' | 'anchor' = Math.random() < 0.5 ? 'sun' : 'anchor';
-    // Spin 4 full turns + 180deg if landing on Anchor
-    setCoinRotationY(prev => {
-      const base = Math.ceil(prev / 360) * 360 + 1440;
-      return landed === 'anchor' ? base + 180 : base;
-    });
-    setTimeout(() => {
+    const from = coinSide === 'sun' ? 0 : 180;
+    const to = 360 * 6 + (landed === 'sun' ? 0 : 180);
+    // End over end: spins fast on the way up, slows as it drops back to the counter.
+    coinRef.current?.animate?.(
+      [{ transform: `rotateX(${from}deg)` }, { transform: `rotateX(${to}deg)` }],
+      { duration: COIN_MS, easing: 'cubic-bezier(0.2, 0.3, 0.3, 1)' },
+    );
+    coinMoverRef.current?.animate?.(
+      [
+        { transform: 'translateY(0px) scale(1)', easing: 'cubic-bezier(0.15, 0.6, 0.4, 1)' },
+        { transform: 'translateY(-84px) scale(1.14)', offset: 0.45, easing: 'cubic-bezier(0.6, 0, 0.85, 0.45)' },
+        { transform: 'translateY(0px) scale(1)', offset: 0.8, easing: 'ease-out' },
+        { transform: 'translateY(-13px) scale(1.03)', offset: 0.9, easing: 'ease-in' },
+        { transform: 'translateY(0px) scale(1)' },
+      ],
+      { duration: COIN_MS },
+    );
+    coinShadowRef.current?.animate?.(
+      [
+        { transform: 'scale(1)', opacity: 1 },
+        { transform: 'scale(0.4)', opacity: 0.3, offset: 0.45 },
+        { transform: 'scale(1)', opacity: 1, offset: 0.8 },
+        { transform: 'scale(0.9)', opacity: 0.85, offset: 0.9 },
+        { transform: 'scale(1)', opacity: 1 },
+      ],
+      { duration: COIN_MS },
+    );
+    setCoinSide(landed);
+    after(COIN_MS + 150, () => {
       setCoinFlipping(false);
       conclude(pickSide === landed, `The doubloon lands on ${landed === 'sun' ? 'Sun' : 'Anchor'}.`);
-    }, 980);
+    });
   };
 
   // --- ARM WRESTLE LOGIC ---
@@ -288,11 +394,12 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
             {/* CAPTAIN'S DICE ON ILLUSTRATED TAVERN TABLE */}
             {activeGame === 'dice' && (
               <div className="space-y-3">
-                <div className="relative rounded-2xl overflow-hidden border-2 border-[#a87e3b] shadow-xl aspect-[4/3]">
+                <div className="relative rounded-2xl overflow-hidden border-2 border-[#a87e3b] shadow-xl aspect-[5/6] -mx-2">
+                  {/* the tray is zoomed in so the felt is big enough to hold all four dice */}
                   <img
                     src="/assets/cantina/dice_table.webp"
                     alt="Tavern dice tray"
-                    className="absolute inset-0 w-full h-full object-cover"
+                    className="absolute inset-0 w-full h-full object-cover scale-[1.5] origin-[48%_47%]"
                     draggable="false"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/30" />
@@ -300,7 +407,7 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
                   <div className="relative z-10 h-full flex flex-col justify-between p-3.5">
                     <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
                       <span className="px-2.5 py-1 rounded-full bg-[#1d120b]/85 border border-[#c8963e]/70 text-[#f8d77d]">
-                        {dicePhase === 'ready' ? 'Ready to Roll' : `Your Hand: ${playerDice[0] + playerDice[1]}`}
+                        {dicePhase === 'ready' ? 'Ready to Roll' : dicePhase === 'rolling' ? 'Rolling…' : `Your Hand: ${playerDice[0] + playerDice[1]}`}
                       </span>
                       {dicePhase === 'done' && (
                         <span className="px-2.5 py-1 rounded-full bg-[#6e1a13]/90 border border-[#f5c768]/70 text-[#fde6c4]">
@@ -309,28 +416,33 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
                       )}
                     </div>
 
-                    <div className="flex items-center justify-center gap-6 my-auto">
-                      {/* Player 3D Ivory Dice */}
-                      <div key={`p-${diceRollKey}`} className="flex gap-3">
-                        <Die3D value={playerDice[0]} tone="ivory" rolling={dicePhase !== 'ready'} tilt={-7} />
-                        <Die3D value={playerDice[1]} tone="ivory" rolling={dicePhase !== 'ready'} tilt={8} />
-                      </div>
-
-                      {/* Barkeep 3D Crimson Dice */}
-                      {dicePhase === 'done' && (
-                        <div key={`b-${diceRollKey}`} className="flex gap-3">
-                          <Die3D value={barkeepDice[0]} tone="crimson" rolling tilt={-5} />
-                          <Die3D value={barkeepDice[1]} tone="crimson" rolling tilt={9} />
+                    {/* Dice sit dead centre of the felt. When the barkeep throws, his pair lands above yours and
+                        yours slides down, so the four together stay centred. */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="relative">
+                        {(dicePhase === 'barkeep' || dicePhase === 'done') && (
+                          <div className="absolute left-1/2 bottom-full mb-5 flex gap-3" style={{ transform: 'translate(-50%, 34px)' }}>
+                            <Die3D value={barkeepDice[0]} tone="crimson" rollKey={1} tilt={-5} from={1} />
+                            <Die3D value={barkeepDice[1]} tone="crimson" rollKey={1} tilt={9} from={1} delay={90} />
+                          </div>
+                        )}
+                        <div
+                          className="flex gap-3 transition-transform duration-300"
+                          style={{ transform: dicePhase === 'barkeep' || dicePhase === 'done' ? 'translateY(34px)' : 'none' }}
+                        >
+                          <Die3D value={playerDice[0]} tone="ivory" rollKey={dieKeys[0]} tilt={-7} from={-1} />
+                          <Die3D value={playerDice[1]} tone="ivory" rollKey={dieKeys[1]} tilt={8} from={-1} delay={90} />
                         </div>
-                      )}
+                      </div>
                     </div>
+                    <div className="my-auto" />
 
                     <div className="text-[10px] font-bold text-[#f7ecd4]/90 drop-shadow">
                       {dicePhase === 'ready'
                         ? 'Cast the ivory dice onto the felt.'
                         : dicePhase === 'rolled'
-                          ? 'You may reroll your lower die once before standing.'
-                          : ''}
+                          ? rerolledOnce ? 'Stand on this hand.' : 'You may reroll your lower die once before standing.'
+                          : dicePhase === 'barkeep' ? 'The barkeep throws…' : ''}
                     </div>
                   </div>
                 </div>
@@ -340,8 +452,8 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
                     Roll Ivory Dice
                   </button>
                 )}
-                {dicePhase === 'rolled' && (
-                  <div className="grid grid-cols-2 gap-2">
+                {(dicePhase === 'rolled' || dicePhase === 'rolling') && (
+                  <div className={`grid grid-cols-2 gap-2 ${dicePhase === 'rolling' ? 'opacity-40 pointer-events-none' : ''}`}>
                     <button
                       onClick={rerollLowDie}
                       disabled={rerolledOnce}
@@ -373,30 +485,20 @@ export const CantinaGames: React.FC<CantinaGamesProps> = ({
                   <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/25" />
 
                   <div className="relative z-10 h-full flex flex-col items-center justify-end pb-6 coin-stage">
-                    <div key={`toss-${coinFlipKey}`} className={coinFlipping ? 'animate-coin-toss' : ''}>
-                      <div
-                        className="coin-3d"
-                        style={{ transform: `rotateY(${coinRotationY}deg)` }}
-                      >
-                        <div className="coin-face">
-                          <img
-                            src="/assets/cantina/coin_sun.webp"
-                            alt="Sun Doubloon"
-                            className="w-full h-full object-contain drop-shadow-[0_6px_12px_rgba(0,0,0,0.65)]"
-                            draggable="false"
-                          />
+                    <div ref={coinMoverRef}>
+                      <div ref={coinRef} className="coin-3d" style={{ transform: `rotateX(${coinSide === 'sun' ? 0 : 180}deg)` }}>
+                        {[-3, -1.5, 0, 1.5, 3].map(z => (
+                          <div key={z} className="coin-rim" style={{ transform: `translateZ(${z}px)` }} />
+                        ))}
+                        <div className="coin-face coin-face-front">
+                          <img src="/assets/cantina/coin_sun.webp" alt="Sun" className="w-full h-full object-contain" draggable="false" />
                         </div>
                         <div className="coin-face coin-face-back">
-                          <img
-                            src="/assets/cantina/coin_anchor.webp"
-                            alt="Anchor Doubloon"
-                            className="w-full h-full object-contain drop-shadow-[0_6px_12px_rgba(0,0,0,0.65)]"
-                            draggable="false"
-                          />
+                          <img src="/assets/cantina/coin_anchor.webp" alt="Anchor" className="w-full h-full object-contain" draggable="false" />
                         </div>
                       </div>
                     </div>
-                    <div className={`w-24 h-3.5 mt-1 rounded-full bg-black/65 blur-[4px] ${coinFlipping ? 'animate-coin-shadow' : ''}`} />
+                    <div ref={coinShadowRef} className="w-24 h-3.5 mt-1 rounded-full bg-black/65 blur-[4px]" />
                   </div>
                 </div>
 

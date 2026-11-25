@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PrologueStoryboard } from './components/PrologueStoryboard';
-import { AnimatedMarker } from './components/AnimatedMarker';
+import { AnimatedMarker, PaintedIcon } from './components/AnimatedMarker';
 import { ShipArt } from './components/ShipArt';
+import { ParallaxPort, PARALLAX_SCENES, preloadAllPorts } from './components/ParallaxPort';
 import { BattleStage } from './components/BattleStage';
 import type { BattleData } from './components/BattleStage';
 import { CantinaGames } from './components/CantinaGames';
@@ -9,7 +10,7 @@ import type { PubGameType } from './components/CantinaGames';
 import { LedgerModal } from './components/LedgerModal';
 import { VoyageEventModal } from './components/VoyageEventModal';
 import {
-  CommodityIcon, IconAnchor, IconScales, IconHammer, IconTankard, IconCompass,
+  CommodityIcon, IconScales, IconHammer, IconCompass,
   IconLedger, IconCoin, IconMenu, IconSound, IconScroll, IconStar, IconSkull,
   IconChevronLeft, IconChevronRight, IconWind,
 } from './components/Icons';
@@ -19,7 +20,7 @@ import {
   OFFICERS, ESCORTS, SYNDICATE_RIVALS,
   loadGame, saveGame, clearSave, buyGoods, sellGoods, buyPrice, sellPrice, cargoCount, netWorth, rankFor,
   advanceDays, learnRumor, voyageDays, rollAmbush, rollWeather, routeTip, tradeRole, emptyCargo, pickMinigame,
-  computeSeaRoute, pointAlongRoute, routeToSmoothPath, totalCargoCapacity, totalFirepower, effectiveSpeed, reputationTier,
+  computeSeaRoute, pointAlongRoute, routeToSmoothPath, smoothRoute, totalCargoCapacity, totalFirepower, effectiveSpeed, reputationTier,
   acceptContract, claimContract, rollSeaEvent,
   getUpgradesForTier, applyUpgrade, generateEnemy, generateLoot, generateRivalEnemy,
   rollAimedShot, rollShot, rollFlee, rollBoard, tributeCost, pickEnemyIntent,
@@ -31,12 +32,12 @@ import type {
 
 type Tab = 'port' | 'market' | 'ship' | 'cantina' | 'map' | 'battle';
 
-const NAV: { tab: Tab; label: string; icon: React.ReactNode }[] = [
-  { tab: 'port',    label: 'Port',     icon: <IconAnchor className="w-5 h-5" /> },
-  { tab: 'market',  label: 'Market',   icon: <IconScales className="w-5 h-5" /> },
-  { tab: 'ship',    label: 'Shipyard', icon: <IconHammer className="w-5 h-5" /> },
-  { tab: 'cantina', label: 'Cantina',  icon: <IconTankard className="w-5 h-5" /> },
-  { tab: 'map',     label: 'Set Sail', icon: <IconCompass className="w-5 h-5" /> },
+const NAV: { tab: Tab; label: string; icon: 'port' | 'mkt' | 'ship' | 'bar' | 'sail' }[] = [
+  { tab: 'port',    label: 'Port',     icon: 'port' },
+  { tab: 'market',  label: 'Market',   icon: 'mkt' },
+  { tab: 'ship',    label: 'Shipyard', icon: 'ship' },
+  { tab: 'cantina', label: 'Cantina',  icon: 'bar' },
+  { tab: 'map',     label: 'Set Sail', icon: 'sail' },
 ];
 
 const DANGER_TEXT = ['Calm waters', 'Calm waters', 'Pirate waters', 'Dangerous waters'];
@@ -160,7 +161,14 @@ const App: React.FC = () => {
 
   // Panning containers & aspect widths
   const portScrollRef = useRef<HTMLDivElement | null>(null);
+  // Ports that have a layered scene can be shown that way or as the original painting.
+  const [layeredPorts, setLayeredPorts] = useState(() => localStorage.getItem('med_merchants_layered') !== 'off');
   const mapScrollRef = useRef<HTMLDivElement | null>(null);
+  // Load the harbour pictures ahead of need: this port first, then the one picked on the map, then the rest.
+  const preloadKey = `${g.player.currentPortId}|${selectedPortId || ''}`;
+  useEffect(() => {
+    preloadAllPorts([g.player.currentPortId, ...(selectedPortId ? [selectedPortId] : [])]);
+  }, [preloadKey]);
   const portWidth = useAspectWidth(portScrollRef, PORT_ASPECT, tab === 'port');
   const mapWidth = useAspectWidth(mapScrollRef, MAP_ASPECT, tab === 'map');
 
@@ -171,6 +179,8 @@ const App: React.FC = () => {
 
   const { player, ports, events, rumors } = g;
   const currentPort = ports.find(p => p.id === player.currentPortId) || ports[0];
+  const hasLayeredScene = !!PARALLAX_SCENES[currentPort.id];
+  const useLayered = hasLayeredScene && layeredPorts && !isEditMode;
   const flagship = player.fleet[0];
   const maxCargo = totalCargoCapacity(player);
   const currentCargo = cargoCount(player);
@@ -191,7 +201,7 @@ const App: React.FC = () => {
   );
   const ledgerAlert = Boolean(readyContract || readyRival);
   const allRivalsDefeated = SYNDICATE_RIVALS.every(r => player.defeatedRivals.includes(r.id));
-  const victoryReached = (player.gold >= GOAL || allRivalsDefeated) && !player.hasWonGame && tab !== 'battle';
+  const victoryReached = player.gold >= GOAL && allRivalsDefeated && !player.hasWonGame && tab !== 'battle';
 
   const say = (text: string) => setToast(text);
   useEffect(() => {
@@ -252,6 +262,7 @@ const App: React.FC = () => {
 
   const handleAcceptContract = (id: string) => {
     audioManager.playSfx('click');
+    if (player.contracts.length >= 2) { say('You already hold two charters. Deliver one first.'); return; }
     setG(prev => acceptContract(prev, id));
     say('Charter accepted. Check your Ledger for delivery.');
   };
@@ -485,6 +496,13 @@ const App: React.FC = () => {
   const arrive = (destId: string, days: number, message?: string) => {
     cancelAnimationFrame(voyageTimerRef.current);
     const dest = gRef.current.ports.find(p => p.id === destId);
+    // A charter whose deadline passes at sea is lost; say so instead of letting it vanish quietly.
+    const arrivalDay = gRef.current.player.gameDay + days;
+    const lapsed = gRef.current.player.contracts.filter(c => c.deadlineDay < arrivalDay);
+    if (lapsed.length) {
+      const names = lapsed.map(c => `${c.amount} ${c.good} to ${gRef.current.ports.find(p => p.id === c.toPortId)?.name || c.toPortId}`).join(', ');
+      setTimeout(() => say(`Charter expired: ${names}. The deadline passed at sea.`), 2600);
+    }
     setG(prev => advanceDays({
       ...prev,
       player: { ...prev.player, currentPortId: destId, gameDay: prev.player.gameDay + days, voyages: prev.player.voyages + 1 },
@@ -593,7 +611,7 @@ const App: React.FC = () => {
 
     const days = voyageDays(start, dest, hasNavigator);
     const weather = rollWeather();
-    const routePts = computeSeaRoute(start, dest);
+    const routePts = smoothRoute(computeSeaRoute(start, dest));
 
     audioManager.playSfx('sail');
     setSelectedPortId(null);
@@ -627,7 +645,7 @@ const App: React.FC = () => {
     const dest = ports.find(p => p.id === destId);
     setPendingSeaEvent(null);
     if (!dest) { arrive(destId, days); return; }
-    const routePts = computeSeaRoute(currentPort, dest);
+    const routePts = smoothRoute(computeSeaRoute(currentPort, dest));
     animateVoyageLeg(routePts, 0.52, 1, 1300, () => {
       arrive(destId, days);
     });
@@ -898,7 +916,7 @@ const App: React.FC = () => {
               <span className="text-[#bda57a] text-[11px] font-bold">/ {GOAL.toLocaleString()}</span>
             </span>
             <span className="text-[10px] text-[#d6c29f] font-bold uppercase tracking-widest mt-1 truncate">
-              {rank} · Day {player.gameDay}
+              {rank} · Day {player.gameDay} · Syndicate {player.defeatedRivals.length}/{SYNDICATE_RIVALS.length}
             </span>
           </div>
 
@@ -948,8 +966,21 @@ const App: React.FC = () => {
         {/* PORT VIEW (Native Aspect Ratio — Zero Stretching) */}
         {tab === 'port' && (
           <div className="flex-1 relative overflow-hidden anim-fade bg-[#0d1d29]">
+            {useLayered && (
+              <ParallaxPort
+                portId={currentPort.id}
+                labels={Object.fromEntries(currentPort.buildings.map((b: Building) => [b.id, b.label]))}
+                shipLabel={currentPort.buildings.find((b: Building) => b.id === 'sail')?.label || 'Set Sail'}
+                ship={<ShipArt tier={flagship.tier} variant="player" upgrades={flagship.upgrades} size="port" facing="right" />}
+                onOpen={(id) => {
+                  const b = currentPort.buildings.find((x: Building) => x.id === id);
+                  if (b) changeTab(b.tab as Tab);
+                }}
+              />
+            )}
             <div
               ref={portScrollRef}
+              style={useLayered ? { display: 'none' } : undefined}
               className="relative h-full overflow-x-auto overflow-y-hidden no-scrollbar cursor-grab"
               onMouseDown={handlePanMouseDown}
               onMouseMove={handlePanMouseMove}
@@ -1016,7 +1047,7 @@ const App: React.FC = () => {
             </div>
 
             {/* Subtle Pan Arrows */}
-            {!isEditMode && (
+            {!isEditMode && !useLayered && (
               <>
                 <button
                   onClick={() => panBy(portScrollRef, -180)}
@@ -1045,6 +1076,18 @@ const App: React.FC = () => {
                   {currentRep.label}
                 </span>
               </div>
+              {hasLayeredScene && !isEditMode && (
+                <button
+                  onClick={() => {
+                    audioManager.playSfx('click');
+                    localStorage.setItem('med_merchants_layered', layeredPorts ? 'off' : 'on');
+                    setLayeredPorts(!layeredPorts);
+                  }}
+                  className="mt-1.5 pointer-events-auto text-[9px] font-black uppercase tracking-widest bg-[#1d120b]/85 text-[#f8e6c1] border border-[#c8963e]/60 px-3 py-1 rounded-full active:scale-95"
+                >
+                  {layeredPorts ? 'Show painted view' : 'Show layered view'}
+                </button>
+              )}
               {isEditMode && (
                 <span className="mt-1 text-[10px] font-black uppercase tracking-widest bg-[#a72d22] text-white px-3 py-0.5 rounded-full">
                   Layout Editor: Drag to Move
@@ -1117,24 +1160,9 @@ const App: React.FC = () => {
                     preserveAspectRatio="none"
                     className="absolute inset-0 w-full h-full pointer-events-none z-10"
                   >
-                    <path
-                      d={routeToSmoothPath(selectedRoute, 1000, 558)}
-                      fill="none"
-                      stroke="#1a1109"
-                      strokeOpacity="0.45"
-                      strokeWidth="4.4"
-                      strokeDasharray="1 10"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d={routeToSmoothPath(selectedRoute, 1000, 558)}
-                      fill="none"
-                      stroke="#fff3cf"
-                      strokeWidth="2.5"
-                      strokeDasharray="1 10"
-                      strokeLinecap="round"
-                      className="animate-route-dash"
-                    />
+                    {/* dotted sea lane: a dark dot under each light one so it reads on any water colour */}
+                    <path d={routeToSmoothPath(selectedRoute, 1000, 558)} fill="none" stroke="#1a1109" strokeOpacity="0.45" strokeWidth="4.4" strokeDasharray="1 10" strokeLinecap="round" />
+                    <path d={routeToSmoothPath(selectedRoute, 1000, 558)} fill="none" stroke="#fff3cf" strokeWidth="2.5" strokeDasharray="1 10" strokeLinecap="round" className="animate-route-dash" />
                   </svg>
                 )}
 
@@ -1685,7 +1713,7 @@ const App: React.FC = () => {
                 active ? 'text-[#f8d77d] bg-[#3b2415]' : 'text-[#c2ab84]'
               } ${locked ? 'opacity-35' : 'active:bg-[#331f12]'}`}
             >
-              {item.icon}
+              <PaintedIcon type={item.icon} className={`w-8 h-8 rounded-full transition ${active ? '' : 'opacity-75 saturate-[0.7]'}`} />
               <span className="text-[9px] font-display font-black uppercase tracking-wider">{item.label}</span>
             </button>
           );
@@ -1771,7 +1799,7 @@ const App: React.FC = () => {
               Win Back the Family Name
             </h2>
             <p className="text-xs font-semibold text-[#5d4229] text-center">
-              Turn 500 gold into {GOAL.toLocaleString()} or defeat all four Syndicate captains.
+              Turn 500 gold into {GOAL.toLocaleString()} and defeat all four Syndicate captains.
             </p>
             <ol className="space-y-2.5 text-xs text-[#2b1d12] leading-snug">
               <li className="flex gap-2.5 items-start">
@@ -1825,9 +1853,7 @@ const App: React.FC = () => {
           <div className="parchment p-6 rounded-3xl max-w-sm w-full text-center space-y-3 max-h-full overflow-y-auto">
             <h2 className="font-display text-2xl font-black uppercase text-[#8a4d09]">Merchant Prince!</h2>
             <p className="text-xs text-[#2b1d12] leading-relaxed">
-              {allRivalsDefeated
-                ? 'With Lord Valerio defeated and the Syndicate shattered, every port on the Mediterranean salutes your flagship.'
-                : `With ${player.gold.toLocaleString()} gold you buy out the Syndicate and reclaim your family's honor from Venice to Egypt.`}
+              With Lord Valerio defeated, the Syndicate shattered and {player.gold.toLocaleString()} gold in your coffers, you reclaim your family's honor. Every port from Venice to Egypt salutes your flagship.
             </p>
             <div className="parchment-card rounded-xl p-3 flex justify-between text-xs font-bold text-[#2b1d12]">
               <span>Days at Sea</span>

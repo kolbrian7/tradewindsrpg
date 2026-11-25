@@ -216,7 +216,7 @@ body {
 }
 .animate-flash-shake { animation: flashShake 0.6s ease-out forwards; }
 
-/* Cantina Pub Game 3D Dice & Doubloon Animations */
+/* Cantina dice and doubloon. Their motion is driven from CantinaGames.tsx. */
 .dice-scene {
   perspective: 520px;
 }
@@ -226,13 +226,12 @@ body {
   height: 52px;
   position: relative;
   transform-style: preserve-3d;
-  transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .dice-face {
   position: absolute;
   inset: 0;
-  border-radius: 10px;
+  border-radius: 9px;
   backface-visibility: hidden;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -269,16 +268,8 @@ body {
   box-shadow: inset 0 1px 1px rgba(80, 40, 0, 0.5), 0 1px 1px rgba(0, 0, 0, 0.45);
 }
 
-@keyframes diceThrow3D {
-  0% { transform: translateY(-48px) translateX(-14px) scale(0.7) rotateX(-240deg) rotateY(180deg); opacity: 0.4; }
-  55% { transform: translateY(5px) translateX(3px) scale(1.06) rotateX(18deg) rotateY(-12deg); opacity: 1; }
-  78% { transform: translateY(-6px) translateX(-2px) scale(0.98) rotateX(-8deg) rotateY(6deg); }
-  100% { transform: translateY(0) translateX(0) scale(1) rotateX(0deg) rotateY(0deg); opacity: 1; }
-}
-.animate-dice-throw { animation: diceThrow3D 0.62s cubic-bezier(0.22, 1, 0.36, 1); }
-
 .coin-stage {
-  perspective: 750px;
+  perspective: 700px;
 }
 
 .coin-3d {
@@ -286,36 +277,24 @@ body {
   height: 108px;
   position: relative;
   transform-style: preserve-3d;
-  transition: transform 0.95s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .coin-face {
   position: absolute;
   inset: 0;
   backface-visibility: hidden;
+}
+.coin-face-front { transform: translateZ(4px); }
+/* Turned about the same axis the coin spins on, so the anchor reads upright when it lands. */
+.coin-face-back { transform: rotateX(180deg) translateZ(4px); }
+
+/* Stacked discs between the two faces give the coin a gold edge when seen side-on. */
+.coin-rim {
+  position: absolute;
+  inset: 4%;
   border-radius: 9999px;
+  background: linear-gradient(180deg, #e2b354 0%, #9a6a1c 55%, #6b4712 100%);
 }
-
-.coin-face-back {
-  transform: rotateY(180deg);
-}
-
-@keyframes coinToss3D {
-  0% { transform: translateY(28px) scale(0.88); }
-  40% { transform: translateY(-64px) scale(1.16); }
-  75% { transform: translateY(4px) scale(0.97); }
-  88% { transform: translateY(-6px) scale(1.02); }
-  100% { transform: translateY(0) scale(1); }
-}
-.animate-coin-toss { animation: coinToss3D 0.98s cubic-bezier(0.22, 1, 0.36, 1); }
-
-@keyframes coinShadow {
-  0% { transform: scale(1); opacity: 0.55; }
-  40% { transform: scale(0.45); opacity: 0.2; }
-  75% { transform: scale(1.05); opacity: 0.62; }
-  100% { transform: scale(1); opacity: 0.55; }
-}
-.animate-coin-shadow { animation: coinShadow 0.98s cubic-bezier(0.22, 1, 0.36, 1); }
 
 @keyframes animFade { from { opacity: 0; } to { opacity: 1; } }
 .anim-fade { animation: animFade 0.25s ease-out; }
@@ -347,3 +326,49 @@ html, body, #root {
   background: #0d1d29;
   overscroll-behavior: none;
 }
+
+/* Layered port scene (ParallaxPort.tsx) */
+@keyframes pxCloud { from { transform: translateX(-30vw); } to { transform: translateX(130vw); } }
+.px-cloud {
+  left: 0;
+  border-radius: 9999px;
+  background: radial-gradient(ellipse at 50% 60%, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.7) 45%, rgba(255, 255, 255, 0) 72%);
+  filter: blur(3px);
+  animation: pxCloud linear infinite;
+}
+
+@keyframes pxGull { from { transform: translateX(-12vw); } to { transform: translateX(112vw); } }
+.px-gull { left: 0; animation: pxGull linear infinite; }
+/* A slow rise and fall as it flies */
+@keyframes pxGullBob { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-9px) rotate(3deg); } }
+.px-gull svg { display: block; width: 100%; overflow: visible; animation: pxGullBob 3.4s ease-in-out infinite; }
+/* Three wing beats, then a glide */
+@keyframes pxFlap { 0%, 28%, 56%, 100% { transform: scaleY(1); } 14%, 42% { transform: scaleY(-0.55); } 70% { transform: scaleY(0.75); } }
+.px-gull-wing { transform-box: view-box; transform-origin: 24px 16px; animation: pxFlap 2.3s ease-in-out infinite; }
+
+/* Sunlight glinting on the sea */
+@keyframes pxGlint { 0%, 100% { opacity: 0; transform: translateX(0) scaleX(0.6); } 50% { opacity: 0.55; transform: translateX(14px) scaleX(1); } }
+.px-glint {
+  height: 2px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(235, 250, 255, 0.9), rgba(255, 255, 255, 0));
+  animation: pxGlint ease-in-out infinite;
+}
+
+/* Foam line and soft reflection under each piece of land */
+.px-waterline {
+  background: linear-gradient(180deg, rgba(240, 252, 255, 0.75) 0, rgba(240, 252, 255, 0.75) 2px, rgba(10, 45, 66, 0.55) 3px, rgba(10, 45, 66, 0) 100%);
+}
+
+/* Water around a floating ship */
+@keyframes shipRing {
+  0% { transform: scale(0.72, 0.6); opacity: 0; }
+  18% { opacity: 0.65; }
+  100% { transform: scale(1.75, 2.3); opacity: 0; }
+}
+.ship-ring { transform-box: fill-box; transform-origin: center; animation: shipRing 4.5s linear infinite; }
+@keyframes shipFoam {
+  0%, 100% { transform: translateX(-2px) scaleY(0.7); opacity: 0.45; }
+  50% { transform: translateX(2px) scaleY(1.25); opacity: 0.9; }
+}
+.ship-foam { transform-box: fill-box; transform-origin: center; animation: shipFoam 3.8s ease-in-out infinite; }

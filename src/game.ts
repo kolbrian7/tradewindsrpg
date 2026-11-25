@@ -341,47 +341,54 @@ export interface Point {
   y: number;
 }
 
-const SEA_NODES: Record<string, Point> = {
-  // Coastal water entry points just outside each port
-  w_barcelona: { x: 18, y: 27 },
-  w_nice:      { x: 30, y: 19 },
-  w_sardinia:  { x: 35, y: 31 },
-  w_rome:      { x: 45, y: 32 },
-  w_venice:    { x: 53, y: 11 },
-  w_tunisia:   { x: 22, y: 81 },
-  w_athens:    { x: 67, y: 45 },
-  w_crete:     { x: 79, y: 67 },
-  w_egypt:     { x: 78, y: 85 },
-  // Open-sea junctions matching painted dashed sea lanes
-  balearic:    { x: 22, y: 42 },
-  ligurian:    { x: 32, y: 23 },
-  westSard:    { x: 30, y: 37 },
-  tyrrhenian:  { x: 42, y: 39 },
-  sicilyWest:  { x: 37, y: 57 },
-  sicilySouth: { x: 48, y: 65 },
-  ionian:      { x: 60, y: 58 },
-  adriaticMid: { x: 57, y: 24 },
-  adriaticS:   { x: 62, y: 40 },
-  aegean:      { x: 73, y: 54 },
-  libyan:      { x: 44, y: 77 },
-  levant:      { x: 75, y: 78 },
+export const SEA_NODES: Record<string, Point> = {
+  // Open water just outside each harbour
+  w_barcelona: { x: 19.5, y: 28 },
+  w_nice:      { x: 29.5, y: 20 },
+  w_sardinia:  { x: 33, y: 34 },
+  w_rome:      { x: 44.3, y: 29.8 },
+  w_venice:    { x: 51.5, y: 10.5 },
+  w_tunisia:   { x: 24, y: 86 },
+  w_athens:    { x: 66.5, y: 42.5 },
+  w_crete:     { x: 80.5, y: 66 },
+  w_egypt:     { x: 78.5, y: 88 },
+  // Turning points, each placed in open water with room to round the nearest cape
+  ligurian:    { x: 36, y: 18.3 },   // north-west of Corsica
+  corsN:       { x: 40.8, y: 17.3 }, // round Corsica's northern cape
+  tyrrN:       { x: 41.3, y: 24.5 }, // down the channel between Corsica and Italy
+  tyrr:        { x: 43, y: 40 },     // middle of the Tyrrhenian
+  sardSW:      { x: 33, y: 45.5 },   // off Sardinia's south-west corner
+  sardS:       { x: 38, y: 47.5 },   // south of Sardinia
+  balE:        { x: 24.5, y: 37 },   // east of the Balearics
+  sicW:        { x: 44, y: 52 },     // west of Sicily
+  sicS:        { x: 49, y: 61 },     // between Sicily and Malta
+  sicSE:       { x: 58, y: 62.3 }, // off Sicily's south-east corner
+  ionian:      { x: 62, y: 54 },
+  libyan:      { x: 48, y: 78 },
+  adrN:        { x: 53.5, y: 14 },
+  adrMid:      { x: 58, y: 21 },
+  adrS:        { x: 63, y: 28.5 },
+  otranto:     { x: 66.3, y: 37 },   // strait between Italy's heel and Greece
+  pelW:        { x: 69, y: 49 },     // west of the Peloponnese
+  pelS:        { x: 72.5, y: 58.5 }, // south of the Peloponnese
+  creteW:      { x: 76.5, y: 64 },   // off Crete's western end
 };
 
 const SEA_EDGES: [string, string][] = [
-  ['w_barcelona', 'balearic'], ['w_barcelona', 'ligurian'],
-  ['w_nice', 'ligurian'], ['w_nice', 'westSard'],
-  ['ligurian', 'w_sardinia'], ['ligurian', 'westSard'], ['ligurian', 'tyrrhenian'],
-  ['westSard', 'balearic'], ['westSard', 'w_sardinia'], ['westSard', 'sicilyWest'],
-  ['w_sardinia', 'tyrrhenian'], ['w_sardinia', 'sicilyWest'],
-  ['w_rome', 'tyrrhenian'], ['tyrrhenian', 'sicilyWest'], ['tyrrhenian', 'sicilySouth'],
-  ['balearic', 'sicilyWest'], ['balearic', 'w_tunisia'],
-  ['w_tunisia', 'sicilyWest'], ['w_tunisia', 'libyan'],
-  ['sicilyWest', 'sicilySouth'], ['sicilyWest', 'libyan'],
-  ['sicilySouth', 'ionian'], ['sicilySouth', 'libyan'],
-  ['w_venice', 'adriaticMid'], ['adriaticMid', 'adriaticS'], ['adriaticS', 'ionian'],
-  ['ionian', 'w_athens'], ['ionian', 'aegean'], ['ionian', 'w_crete'], ['ionian', 'libyan'],
-  ['w_athens', 'aegean'], ['aegean', 'w_crete'],
-  ['w_crete', 'levant'], ['libyan', 'levant'], ['levant', 'w_egypt'],
+  ['w_barcelona', 'w_nice'], ['w_barcelona', 'ligurian'], ['w_barcelona', 'w_sardinia'], ['w_barcelona', 'balE'],
+  ['w_nice', 'ligurian'], ['w_nice', 'w_sardinia'],
+  ['ligurian', 'corsN'], ['ligurian', 'w_sardinia'], ['corsN', 'tyrrN'], ['tyrrN', 'w_rome'],
+  ['w_rome', 'tyrr'], ['tyrr', 'sardS'], ['tyrr', 'sicW'],
+  ['w_sardinia', 'sardSW'], ['sardSW', 'sardS'], ['sardSW', 'balE'], ['sardSW', 'w_tunisia'],
+  ['sardS', 'sicW'], ['sardS', 'balE'], ['sardS', 'w_tunisia'], ['balE', 'w_tunisia'],
+  ['sicW', 'sicS'], ['sicW', 'w_tunisia'], ['sicW', 'libyan'],
+  ['sicS', 'sicSE'], ['sicS', 'libyan'],
+  ['sicSE', 'ionian'], ['sicSE', 'creteW'], ['sicSE', 'w_egypt'],
+  ['w_tunisia', 'libyan'], ['libyan', 'w_egypt'], ['w_tunisia', 'sicS'], ['libyan', 'sicSE'], ['libyan', 'creteW'],
+  ['ionian', 'w_athens'], ['ionian', 'otranto'], ['ionian', 'creteW'],
+  ['w_athens', 'otranto'], ['w_athens', 'pelW'], ['pelW', 'pelS'], ['pelS', 'creteW'],
+  ['creteW', 'w_crete'], ['creteW', 'w_egypt'], ['w_crete', 'w_egypt'],
+  ['w_venice', 'adrN'], ['adrN', 'adrMid'], ['adrMid', 'adrS'], ['adrS', 'otranto'],
 ];
 
 const ADJ: Record<string, string[]> = {};
@@ -468,27 +475,37 @@ export const pointAlongRoute = (pts: Point[], t: number): Point => {
 };
 
 /** Converts waypoint percentages into a smooth Catmull-Rom Cubic Bezier SVG path string. */
-export const routeToSmoothPath = (pts: Point[], width = 1000, height = 558): string => {
-  if (pts.length === 0) return '';
-  const scaled = pts.map(p => ({ x: (p.x / 100) * width, y: (p.y / 100) * height }));
-  if (scaled.length === 1) return `M ${scaled[0].x.toFixed(1)} ${scaled[0].y.toFixed(1)}`;
-  if (scaled.length === 2) {
-    return `M ${scaled[0].x.toFixed(1)} ${scaled[0].y.toFixed(1)} L ${scaled[1].x.toFixed(1)} ${scaled[1].y.toFixed(1)}`;
+/**
+ * Turns a waypoint chain into one flowing curve through the waypoints. Uses a centripetal spline,
+ * which bends tightly at each turn and cannot loop or overshoot the way an ordinary spline does.
+ */
+export const smoothRoute = (pts: Point[]): Point[] => {
+  if (pts.length < 3) return pts;
+  const P = pts.map(p => ({ x: p.x * 1.8, y: p.y }));            // work in true proportions (the map is 1.8 wide per 1 tall)
+  const first = P[0], last = P[P.length - 1];
+  const ctl = [{ x: 2 * first.x - P[1].x, y: 2 * first.y - P[1].y }, ...P, { x: 2 * last.x - P[P.length - 2].x, y: 2 * last.y - P[P.length - 2].y }];
+  const knot = (a: Point, b: Point) => Math.max(1e-4, Math.sqrt(Math.hypot(b.x - a.x, b.y - a.y)));
+  const mix = (a: Point, b: Point, ta: number, tb: number, t: number): Point => ({
+    x: ((tb - t) * a.x + (t - ta) * b.x) / (tb - ta),
+    y: ((tb - t) * a.y + (t - ta) * b.y) / (tb - ta),
+  });
+  const out: Point[] = [pts[0]];
+  for (let i = 1; i < ctl.length - 2; i++) {
+    const p0 = ctl[i - 1], p1 = ctl[i], p2 = ctl[i + 1], p3 = ctl[i + 2];
+    const t0 = 0, t1 = t0 + knot(p0, p1), t2 = t1 + knot(p1, p2), t3 = t2 + knot(p2, p3);
+    for (let k = 1; k <= 16; k++) {
+      const t = t1 + ((t2 - t1) * k) / 16;
+      const a1 = mix(p0, p1, t0, t1, t), a2 = mix(p1, p2, t1, t2, t), a3 = mix(p2, p3, t2, t3, t);
+      const b1 = mix(a1, a2, t0, t2, t), b2 = mix(a2, a3, t1, t3, t);
+      const c = mix(b1, b2, t1, t2, t);
+      out.push({ x: c.x / 1.8, y: c.y });
+    }
   }
-  let d = `M ${scaled[0].x.toFixed(1)} ${scaled[0].y.toFixed(1)}`;
-  for (let i = 0; i < scaled.length - 1; i++) {
-    const p0 = scaled[Math.max(0, i - 1)];
-    const p1 = scaled[i];
-    const p2 = scaled[i + 1];
-    const p3 = scaled[Math.min(scaled.length - 1, i + 2)];
-    const c1x = p1.x + (p2.x - p0.x) / 6;
-    const c1y = p1.y + (p2.y - p0.y) / 6;
-    const c2x = p2.x - (p3.x - p1.x) / 6;
-    const c2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
-  }
-  return d;
+  return out;
 };
+
+export const routeToSmoothPath = (pts: Point[], width = 1000, height = 558): string =>
+  smoothRoute(pts).map((p, i) => `${i ? 'L' : 'M'} ${((p.x / 100) * width).toFixed(1)} ${((p.y / 100) * height).toFixed(1)}`).join(' ');
 
 export type WeatherType = 'Tailwind' | 'Fair Seas' | 'Crosswind' | 'Mistral Gale';
 
@@ -571,9 +588,13 @@ export const acceptContract = (g: GameState, contractId: string): GameState => {
   const list = g.portContracts[g.player.currentPortId] || [];
   const target = list.find(c => c.id === contractId);
   if (!target) return g;
+  // The delivery clock starts when you sign, not when the offer was posted (an offer can sit in a port for weeks).
+  const from = g.ports.find(p => p.id === target.fromPortId);
+  const to = g.ports.find(p => p.id === target.toPortId);
+  const signed = { ...target, deadlineDay: g.player.gameDay + (from && to ? voyageDays(from, to, false) : 6) + 8 };
   return {
     ...g,
-    player: { ...g.player, contracts: [...g.player.contracts, target] },
+    player: { ...g.player, contracts: [...g.player.contracts, signed] },
     portContracts: { ...g.portContracts, [g.player.currentPortId]: list.filter(c => c.id !== contractId) },
   };
 };
@@ -620,7 +641,8 @@ export const advanceDays = (g: GameState, days: number): GameState => {
   const destPort = ports.find(p => p.id === destId);
   const contracts = g.player.contracts.filter(c => c.deadlineDay >= g.player.gameDay);
   const portContracts = { ...g.portContracts };
-  if (destPort && (!portContracts[destId] || portContracts[destId].length === 0)) {
+  // Fresh offers are posted every time you make port
+  if (destPort) {
     portContracts[destId] = generateContractsForPort(destPort, ports, g.player.gameDay);
   }
   return { ...g, ports, events, portContracts, player: { ...g.player, contracts } };
@@ -732,7 +754,7 @@ export const SYNDICATE_RIVALS: RivalDef[] = [
     speed: 6,
     minWorth: 1800,
     watersPortId: 'nice',
-    bounty: 900,
+    bounty: 1500,
     lootGood: 'Spice',
     lootAmount: 4,
     taunt: 'No Tartane crosses the Ligurian without paying Vane his tithe!',
@@ -748,7 +770,7 @@ export const SYNDICATE_RIVALS: RivalDef[] = [
     speed: 8,
     minWorth: 6500,
     watersPortId: 'rome',
-    bounty: 2400,
+    bounty: 5000,
     lootGood: 'Silk',
     lootAmount: 5,
     taunt: 'The Syndicate owns every dock from Rome to Venice, little captain.',
@@ -764,7 +786,7 @@ export const SYNDICATE_RIVALS: RivalDef[] = [
     speed: 9,
     minWorth: 16000,
     watersPortId: 'crete',
-    bounty: 5000,
+    bounty: 10000,
     lootGood: 'Gems',
     lootAmount: 4,
     taunt: 'Turn back toward Sardinia, or feed the fishes off Crete!',
@@ -780,7 +802,7 @@ export const SYNDICATE_RIVALS: RivalDef[] = [
     speed: 10,
     minWorth: 30000,
     watersPortId: 'venice',
-    bounty: 12000,
+    bounty: 20000,
     lootGood: 'Statues',
     lootAmount: 5,
     taunt: 'I stripped your family of their fleet. Come claim your ruin!',
