@@ -359,7 +359,16 @@ const App: React.FC = () => {
     });
   };
 
+  // A harbour the League holds shuts its shipyard to you: no upgrades, no new ships, no hiring.
+  const yardShut = () => {
+    if (!leagueHolds(gRef.current.player, gRef.current.player.currentPortId)) return false;
+    audioManager.playSfx('click');
+    say('The League has closed this shipyard to you. Free the harbour first.');
+    return true;
+  };
+
   const buyUpgrade = (upgradeId: string) => {
+    if (yardShut()) return;
     const upgrade = getUpgradesForTier(flagship.tier).find(u => u.id === upgradeId);
     if (!upgrade || player.gold < upgrade.cost || flagship.upgrades.includes(upgradeId)) return;
     audioManager.playSfx('coin');
@@ -374,6 +383,7 @@ const App: React.FC = () => {
   };
 
   const hireOfficer = (id: OfficerId) => {
+    if (yardShut()) return;
     const off = OFFICERS.find(o => o.id === id);
     if (!off || player.officers.includes(id) || player.gold < off.cost) return;
     audioManager.playSfx('victory');
@@ -385,6 +395,7 @@ const App: React.FC = () => {
   };
 
   const buyEscort = (def: EscortDef) => {
+    if (yardShut()) return;
     if (player.escorts.length >= 2 || player.gold < def.cost) return;
     audioManager.playSfx('victory');
     setG(prev => ({
@@ -1643,6 +1654,12 @@ const App: React.FC = () => {
                 const toggle = (id: string) => () => { audioManager.playSfx('click'); setYardOpen(o => (o === id ? null : id)); };
                 return (
                   <>
+                    {leagueHere && (
+                      <div className="rounded-2xl border-2 border-[#9b251c] bg-[#2a1210] px-3 py-2.5 text-center">
+                        <div className="font-display font-black uppercase tracking-wider text-sm text-[#f06458]">Shipyard Closed</div>
+                        <div className="text-[11px] font-bold text-[#e8d5b0]">The League holds this harbour. No repairs, upgrades, new ships or hiring here until you free it.</div>
+                      </div>
+                    )}
                     <FleetCard
                       open={yardOpen === 'flagship'} onToggle={toggle('flagship')}
                       art={<div style={{ zoom: 0.8 }}><ShipArt tier={flagship.tier} variant="player" upgrades={flagship.upgrades} size="map" facing="right" /></div>}
@@ -1683,7 +1700,7 @@ const App: React.FC = () => {
                       <TraderCard
                         key={t.id} g={g} ship={t} open={yardOpen === t.id} onToggle={toggle(t.id)}
                         onRoute={(id, a, b, good) => { audioManager.playSfx('click'); setG(prev => setTraderRoute(prev, id, a, b, good)); say('Orders given. She sails with the tide.'); }}
-                        onUpgrade={(id, up) => { audioManager.playSfx('coin'); setG(prev => upgradeTrader(prev, id, up)); }}
+                        onUpgrade={(id, up) => { if (yardShut()) return; audioManager.playSfx('coin'); setG(prev => upgradeTrader(prev, id, up)); }}
                       />
                     ))}
 
@@ -1697,7 +1714,7 @@ const App: React.FC = () => {
                         <div className="grid grid-cols-3 gap-1.5">
                           {TRADER_CLASSES.filter(c => c.tier <= 3).map(c => (
                             <button key={c.tier} disabled={player.gold < c.cost}
-                              onClick={() => { audioManager.playSfx('coin'); setG(prev => buyTrader(prev, c.tier)); setYardOpen(null); say('A new ship joins your fleet and sets off to trade.'); }}
+                              onClick={() => { if (yardShut()) return; audioManager.playSfx('coin'); setG(prev => buyTrader(prev, c.tier)); setYardOpen(null); say('A new ship joins your fleet and sets off to trade.'); }}
                               className="btn-brass rounded-xl px-1 py-2 flex flex-col items-center disabled:opacity-40">
                               <div style={{ zoom: 0.7 }}><ShipArt tier={c.tier} variant="player" size="map" facing="right" /></div>
                               <div className="text-[10px] font-black uppercase">{c.shipClass}</div>

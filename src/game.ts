@@ -688,7 +688,7 @@ export const buyPort = (g: GameState, id: string): GameState => {
 
 /** Short of Patron? The Harbor Master can be bribed: the port's price again, plus this share of it for every
  *  point of standing you are missing. He will not even listen below this standing. */
-export const BRIBE_PER_POINT = 0.02;
+export const BRIBE_PER_POINT = 0.01;
 export const BRIBE_MIN_REP = 20;
 export const bribeCost = (p: Player, id: string) => {
   const missing = Math.max(0, PORT_OWN_REP - (p.reputation?.[id] || 0));
@@ -759,7 +759,7 @@ export const portTakenBy = (p: Player, portId: string, exceptShipId?: string) =>
 export const buyTrader = (g: GameState, tier: number): GameState => {
   const cls = TRADER_CLASSES.find(c => c.tier === tier && c.tier <= 3);
   const p = g.player;
-  if (!cls || !p.hasWonGame || p.traders.length >= MAX_TRADERS || p.gold < cls.cost) return g;
+  if (!cls || !p.hasWonGame || p.traders.length >= MAX_TRADERS || p.gold < cls.cost || leagueHolds(p, p.currentPortId)) return g;
   const name = TRADER_NAMES.find(n => !p.traders.some(t => t.name === n)) || `Trader ${p.traders.length + 1}`;
   const ship: TradeShip = { id: newId(), name, tier, upgrades: [], fromId: null, toId: null, good: null, progress: 0, strongbox: 0, lastTrip: 0 };
   // She starts work at once on the best route going today; you can change it whenever you like.
@@ -778,6 +778,7 @@ export const setTraderRoute = (g: GameState, id: string, fromId: string, toId: s
   portTakenBy(g.player, fromId, id) ? g : patchTrader(g, id, t => ({ ...t, fromId, toId, good, progress: 0, lastTrip: 0 }));
 /** Fits one of the four upgrades. With all four fitted she is rebuilt as the next class up, like your flagship. */
 export const upgradeTrader = (g: GameState, id: string, upgradeId: string): GameState => {
+  if (leagueHolds(g.player, g.player.currentPortId)) return g;
   const t = g.player.traders.find(x => x.id === id);
   if (!t || has(t, upgradeId) || !TRADER_UPGRADES.some(u => u.id === upgradeId) || g.player.gold < traderUpgradeCost(t)) return g;
   const paid = { ...g, player: { ...g.player, gold: g.player.gold - traderUpgradeCost(t) } };
