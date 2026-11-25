@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { GameState, RivalDef } from '../game';
-import { SYNDICATE_RIVALS, PORT_TRADE, reputationTier, netWorth, voyageDays, ownsPort, portPrice, portDailyIncome, portIncomeDue } from '../game';
+import { SYNDICATE_RIVALS, PORT_TRADE, reputationTier, netWorth, voyageDays, leagueHolds, ownsPort, portPrice, portDailyIncome, portIncomeDue } from '../game';
 import { CommodityIcon, IconCoin, IconLedger, IconScroll, IconSkull, IconStar } from './Icons';
 
 interface LedgerModalProps {
@@ -205,7 +205,9 @@ export const LedgerModal: React.FC<LedgerModalProps> = ({
                       <div className="text-[11px] font-bold text-[#7d4f0a]">
                         {ownsPort(player, p.id)
                           ? `⚑ Yours · ${portDailyIncome(p.id).toLocaleString()} gold a day · ${portIncomeDue(player, p.id).toLocaleString()} waiting`
-                          : `For sale: ${portPrice(p.id).toLocaleString()} gold, Patron standing needed`}
+                          : leagueHolds(player, p.id)
+                            ? '⚑ Held by the Corsair League. Beat its captain there to free it.'
+                            : `For sale: ${portPrice(p.id).toLocaleString()} gold, Patron standing needed`}
                       </div>
                     )}
                     {t && (

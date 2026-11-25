@@ -104,6 +104,16 @@ export interface RivalDef {
   taunt: string;
 }
 
+export interface LeagueState {
+  warnedDay: number | null;            // day the League was first sighted (null = not yet)
+  ports: Record<string, number>;       // harbours it holds -> day it took them
+  freed: Record<string, number>;       // harbours you won back -> day, so it leaves them alone for a while
+  nextMoveDay: number;
+  defeated: boolean;
+  news: string[];                      // what it did while you were at sea, waiting to be told to the player
+}
+export const emptyLeague = (): LeagueState => ({ warnedDay: null, ports: {}, freed: {}, nextMoveDay: 0, defeated: false, news: [] });
+
 export interface Player {
   gold: number;
   fleet: Ship[];
@@ -121,6 +131,8 @@ export interface Player {
   /** Second chapter: harbours you have bought, each with the day its takings were last collected. */
   ownedPorts: Record<string, number>;
   hasWonEmpire: boolean;
+  /** The rival house that turns up in the second chapter and buys harbours too. */
+  league: LeagueState;
   seenGuide: boolean;
   voyages: number;
 }
@@ -259,14 +271,14 @@ const rawPriceAt = (port: Port, good: CommodityType, events: TradeEvent[], press
 export const buyPrice = (port: Port, good: CommodityType, events: TradeEvent[], player?: Player) => {
   const base = rawPriceAt(port, good, events, port.market[good].pressure);
   if (!player) return base;
-  const repDiscount = reputationTier(player.reputation?.[port.id] || 0).bonus;
+  const repDiscount = reputationTier(player.reputation?.[port.id] || 0).bonus - leagueTax(player, port.id);
   const factorDiscount = player.officers?.includes('quartermaster') ? 0.08 : 0;
   return Math.max(1, Math.round(base * (1 - repDiscount - factorDiscount)));
 };
 
 export const sellPrice = (port: Port, good: CommodityType, events: TradeEvent[], player?: Player) => {
   const base = rawPriceAt(port, good, events, port.market[good].pressure);
-  const repBonus = player ? reputationTier(player.reputation?.[port.id] || 0).bonus : 0;
+  const repBonus = (player ? reputationTier(player.reputation?.[port.id] || 0).bonus : 0) - leagueTax(player, port.id);
   const factorBonus = player?.officers?.includes('quartermaster') ? 0.08 : 0;
   return Math.max(1, Math.floor(base * SELL_CUT * (1 + repBonus + factorBonus)));
 };
@@ -282,7 +294,7 @@ export const buyGoods = (g: GameState, good: CommodityType, want: number): GameS
   let gold = g.player.gold;
   let pressure = port.market[good].pressure;
   let space = totalCargoCapacity(g.player) - cargoCount(g.player);
-  const repDiscount = reputationTier(g.player.reputation?.[port.id] || 0).bonus;
+  const repDiscount = reputationTier(g.player.reputation?.[port.id] || 0).bonus - leagueTax(g.player, port.id);
   const factorDiscount = g.player.officers?.includes('quartermaster') ? 0.08 : 0;
   let bought = 0;
   let spent = 0;
@@ -326,7 +338,7 @@ export const sellGoods = (g: GameState, good: CommodityType, want: number): Game
   const count = Math.min(want, held);
   if (count <= 0) return g;
   let pressure = port.market[good].pressure;
-  const repBonus = reputationTier(g.player.reputation?.[port.id] || 0).bonus;
+  const repBonus = reputationTier(g.player.reputation?.[port.id] || 0).bonus - leagueTax(g.player, port.id);
   const factorBonus = g.player.officers?.includes('quartermaster') ? 0.08 : 0;
   let earned = 0;
   for (let i = 0; i < count; i++) {
@@ -616,7 +628,7 @@ export const portIncomeDue = (p: Player, id: string) =>
 
 export const canBuyPort = (g: GameState, id: string) =>
   g.player.hasWonGame && g.player.currentPortId === id && !ownsPort(g.player, id) &&
-  (g.player.reputation?.[id] || 0) >= PORT_OWN_REP && g.player.gold >= portPrice(id);
+  !leagueHolds(g.player, id) && (g.player.reputation?.[id] || 0) >= PORT_OWN_REP && g.player.gold >= portPrice(id);
 
 export const buyPort = (g: GameState, id: string): GameState => {
   if (!canBuyPort(g, id)) return g;
@@ -629,6 +641,95 @@ export const collectPortIncome = (g: GameState): GameState => {
   const due = portIncomeDue(g.player, id);
   if (!ownsPort(g.player, id)) return g;
   return { ...g, player: { ...g.player, gold: g.player.gold + due, ownedPorts: { ...g.player.ownedPorts, [id]: g.player.gameDay } } };
+};
+
+// --- THE CORSAIR LEAGUE: pirates turned merchants, buying harbours against you ---
+
+export const LEAGUE_NAME = 'Corsair League';
+export const LEAGUE_STARTS_AT = 2;      // it is first sighted once you own this many harbours
+export const LEAGUE_DELAY = 12;         // days between the sighting and its first purchase
+export const LEAGUE_PACE = 25;          // days between its moves
+export const LEAGUE_GRACE = 30;         // days it leaves a harbour alone after you win it back
+export const LEAGUE_FLAGSHIP_AT = 5;    // its flagship comes for you once you own this many
+export const LEAGUE_TAX = 0.12;         // how much worse prices are in a harbour it holds
+
+export const leagueHolds = (p: Player, id: string) => p.league?.ports?.[id] !== undefined;
+export const leagueActive = (p: Player) => Boolean(p.hasWonGame && p.league && p.league.warnedDay !== null && !p.league.defeated);
+const leagueTax = (p: Player | undefined, id: string) => (p && leagueHolds(p, id) ? LEAGUE_TAX : 0);
+
+const LEAGUE_CAPTAINS: Record<string, [string, string]> = {
+  sardinia: ['Captain Brusco', 'The Jackdaw'], crete: ['Captain Xanthe', 'The Minotaur'], tunisia: ['Reis Hamid', 'The Scimitar'],
+  nice: ['Captain Delacroix', 'The Mistral'], barcelona: ['Captain Ferrer', 'The Red Bull'], athens: ['Captain Kostas', 'The Gorgon'],
+  egypt: ['Reis Baraka', 'The Scarab'], rome: ['Captain Orsini', 'The She-Wolf'], venice: ['Captain Contarini', 'The Black Lion'],
+};
+/** The captain the League leaves guarding a harbour. Dearer harbours get stronger guards. */
+export const leagueCaptain = (port: Port): RivalDef => {
+  const price = portPrice(port.id);
+  const [name, shipName] = LEAGUE_CAPTAINS[port.id] || ['A League Captain', 'The Black Sail'];
+  return {
+    id: `league:${port.id}`, name, shipName, shipClass: 'Galleon', tier: 4,
+    hull: 150 + Math.round(price / 1000), firepower: 11 + Math.round(price / 20000), speed: 10,
+    minWorth: 0, watersPortId: port.id, bounty: Math.round(price * 0.15), lootGood: 'Silk', lootAmount: 6,
+    taunt: `${port.name} belongs to the League now. Sail on, merchant.`,
+  };
+};
+export const LEAGUE_FLAGSHIP: RivalDef = {
+  id: 'league:flagship', name: 'Admiral Mora', shipName: 'The Black Tide', shipClass: 'Galleon', tier: 4,
+  hull: 250, firepower: 16, speed: 11, minWorth: 0, watersPortId: '', bounty: 40000, lootGood: 'Gems', lootAmount: 8,
+  taunt: 'You buy harbours with coin. I take them with iron.',
+};
+export const isLeagueRival = (r?: RivalDef | null) => Boolean(r && r.id.startsWith('league:'));
+/** The flagship can be fought once you own enough harbours, or once there is nothing left on the market. */
+export const flagshipReady = (g: GameState) => {
+  if (!leagueActive(g.player)) return false;
+  const mine = g.ports.filter(p => ownsPort(g.player, p.id)).length;
+  const theirs = Object.keys(g.player.league.ports).length;
+  return mine >= LEAGUE_FLAGSHIP_AT || (theirs > 0 && mine + theirs === g.ports.length);
+};
+
+/** Run when you make port: the League is sighted, buys a harbour, or raids one of yours. Leaves its news for the player. */
+export const leagueTick = (g: GameState): GameState => {
+  const p = g.player;
+  if (!p.hasWonGame || p.league.defeated) return g;
+  const day = p.gameDay;
+  const mine = g.ports.filter(x => ownsPort(p, x.id));
+  let lg = p.league;
+  const news = [...lg.news];
+  let owned = p.ownedPorts;
+  if (lg.warnedDay === null) {
+    if (mine.length < LEAGUE_STARTS_AT) return g;
+    lg = { ...lg, warnedDay: day, nextMoveDay: day + LEAGUE_DELAY };
+    news.push(`Black sails have been sighted. The ${LEAGUE_NAME}, pirates grown rich, mean to buy the harbours before you do. Expect their first purchase within a fortnight.`);
+  } else {
+    let moves = 0;
+    while (day >= lg.nextMoveDay && moves < 2) {
+      moves++;
+      const open = g.ports
+        .filter(x => !ownsPort(p, x.id) && lg.ports[x.id] === undefined && x.id !== p.currentPortId && day - (lg.freed[x.id] ?? -999) >= LEAGUE_GRACE)
+        .sort((a, b) => portPrice(a.id) - portPrice(b.id));
+      if (open[0]) {
+        lg = { ...lg, ports: { ...lg.ports, [open[0].id]: day } };
+        news.push(`The League has bought ${open[0].name}. Prices there are worse for you and its shipyard is closed to you until you beat the captain guarding it.`);
+      }
+      const target = mine.filter(x => x.id !== p.currentPortId).map(x => ({ x, due: portIncomeDue({ ...p, ownedPorts: owned }, x.id) })).sort((a, b) => b.due - a.due)[0];
+      if (target && target.due > 0 && !open[0]) {
+        owned = { ...owned, [target.x.id]: day };
+        news.push(`League raiders struck ${target.x.name} and carried off ${target.due.toLocaleString()} gold of your takings.`);
+      }
+      lg = { ...lg, nextMoveDay: lg.nextMoveDay + LEAGUE_PACE };
+    }
+    if (day >= lg.nextMoveDay) lg = { ...lg, nextMoveDay: day + LEAGUE_PACE };
+  }
+  return { ...g, player: { ...p, ownedPorts: owned, league: { ...lg, news } } };
+};
+
+/** What beating a League ship does: a guard captain frees their harbour; the flagship ends the League. */
+export const leagueBeaten = (p: Player, rivalId: string): Player => {
+  if (rivalId === LEAGUE_FLAGSHIP.id) return { ...p, league: { ...p.league, defeated: true, ports: {}, news: [] } };
+  const portId = rivalId.slice('league:'.length);
+  const ports = { ...p.league.ports };
+  delete ports[portId];
+  return { ...p, league: { ...p.league, ports, freed: { ...p.league.freed, [portId]: p.gameDay } } };
 };
 
 export const acceptContract = (g: GameState, contractId: string): GameState => {
@@ -1131,6 +1232,7 @@ const newPlayer = (): Player => {
     hasWonGame: false,
     ownedPorts: {},
     hasWonEmpire: false,
+    league: emptyLeague(),
     seenGuide: false,
     voyages: 0,
   };
@@ -1164,6 +1266,7 @@ export const loadGame = (): GameState => {
       officers: Array.isArray(savedPlayer.officers) ? savedPlayer.officers : [],
       contracts: Array.isArray(savedPlayer.contracts) ? savedPlayer.contracts : [],
       ownedPorts: savedPlayer.ownedPorts && typeof savedPlayer.ownedPorts === 'object' ? savedPlayer.ownedPorts : {},
+      league: { ...emptyLeague(), ...(savedPlayer.league && typeof savedPlayer.league === 'object' ? savedPlayer.league : {}) },
       reputation: savedPlayer.reputation && typeof savedPlayer.reputation === 'object' ? savedPlayer.reputation : {},
       defeatedRivals: Array.isArray(savedPlayer.defeatedRivals) ? savedPlayer.defeatedRivals : [],
       cargo: { ...emptyCargo(), ...(savedPlayer.cargo || {}) },

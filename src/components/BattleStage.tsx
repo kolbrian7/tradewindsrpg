@@ -138,7 +138,7 @@ export const BattleStage: React.FC<BattleStageProps> = ({
         {/* Enemy Intent Banner */}
         <div className="absolute top-2.5 inset-x-3 z-20 flex justify-between items-center gap-2 pointer-events-none">
           <span className="px-2.5 py-1 rounded-full bg-[#1d120b]/85 border border-[#c8963e]/60 text-[10px] font-bold uppercase tracking-wider text-[#f8d77d] flex items-center gap-1.5">
-            {battle.rival ? <><IconSkull className="w-3.5 h-3.5 text-[#f06458]" /> Syndicate Rival</> : 'Pirate Ambush'}
+            {battle.rival ? <><IconSkull className="w-3.5 h-3.5 text-[#f06458]" /> {battle.rival?.id.startsWith('league:') ? 'Corsair League' : 'Syndicate Rival'}</> : 'Pirate Ambush'}
           </span>
           {battle.phase === 'player' && (
             <span className="px-2.5 py-1 rounded-full bg-[#731c17]/90 border border-[#f29b7e]/50 text-[10px] font-bold text-[#fde8d7] shadow">

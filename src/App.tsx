@@ -22,6 +22,7 @@ import {
   loadGame, saveGame, clearSave, buyGoods, sellGoods, buyPrice, sellPrice, cargoCount, netWorth, rankFor,
   advanceDays, learnRumor, voyageDays, rollAmbush, rollWeather, routeTip, tradeRole, emptyCargo, pickMinigame,
   PIRATE_REP, REP_STEPS, sellRepGain,
+  LEAGUE_NAME, LEAGUE_FLAGSHIP, leagueHolds, leagueCaptain, isLeagueRival, flagshipReady, leagueTick, leagueBeaten,
   PORT_OWN_REP, portPrice, portDailyIncome, ownsPort, portIncomeDue, canBuyPort, buyPort, collectPortIncome,
   computeSeaRoute, pointAlongRoute, routeToSmoothPath, smoothRoute, totalCargoCapacity, totalFirepower, effectiveSpeed, reputationTier,
   acceptContract, claimContract, rollSeaEvent,
@@ -207,6 +208,18 @@ const App: React.FC = () => {
   const allRivalsDefeated = SYNDICATE_RIVALS.every(r => player.defeatedRivals.includes(r.id));
   const ownedCount = ports.filter(p => ownsPort(player, p.id)).length;
   const ownsHere = ownsPort(player, currentPort.id);
+  const leagueHere = leagueHolds(player, currentPort.id);
+  const flagshipHere = flagshipReady(g) && !leagueHere;
+  // Tell the player what the League did while they were at sea, once they are back in port.
+  const leagueNews = player.league?.news || [];
+  useEffect(() => {
+    if (!leagueNews.length || tab !== 'port' || isTraveling || notice || victoryReached || empireReached) return;
+    const t = setTimeout(() => {
+      setNotice({ title: `The ${LEAGUE_NAME}`, body: leagueNews.join(' ') });
+      setG(prev => ({ ...prev, player: { ...prev.player, league: { ...prev.player.league, news: [] } } }));
+    }, 1400);
+    return () => clearTimeout(t);
+  });
   const empireReached = player.hasWonGame && ownedCount === ports.length && !player.hasWonEmpire && tab !== 'battle';
   const victoryReached = player.gold >= GOAL && allRivalsDefeated && !player.hasWonGame && tab !== 'battle';
 
@@ -310,7 +323,7 @@ const App: React.FC = () => {
 
   const hullDamage = flagship.hullHealth.max - flagship.hullHealth.current;
   const repairRate = ownsPort(player, player.currentPortId) ? 0 : REPAIR_COST_PER_POINT;   // free in a harbour you own
-  const repairPoints = repairRate ? Math.min(hullDamage, Math.floor(player.gold / repairRate)) : hullDamage;
+  const repairPoints = leagueHolds(player, player.currentPortId) ? 0 : repairRate ? Math.min(hullDamage, Math.floor(player.gold / repairRate)) : hullDamage;
   const repairCost = repairPoints * repairRate;
 
   const repair = () => {
@@ -320,7 +333,7 @@ const App: React.FC = () => {
       const ship = prev.player.fleet[0];
       const rate = ownsPort(prev.player, prev.player.currentPortId) ? 0 : REPAIR_COST_PER_POINT;
       const missing = ship.hullHealth.max - ship.hullHealth.current;
-      const points = rate ? Math.min(missing, Math.floor(prev.player.gold / rate)) : missing;
+      const points = leagueHolds(prev.player, prev.player.currentPortId) ? 0 : rate ? Math.min(missing, Math.floor(prev.player.gold / rate)) : missing;
       if (points <= 0) return prev;
       return {
         ...prev,
@@ -518,10 +531,10 @@ const App: React.FC = () => {
     const p0 = gRef.current.player;
     const takings = portIncomeDue({ ...p0, gameDay: arrivalDay }, destId);
     if (takings > 0) setTimeout(() => say(`Your harbour in ${dest?.name || 'port'} paid you ${takings.toLocaleString()} gold.`), lapsed.length ? 6200 : 2600);
-    setG(prev => collectPortIncome(advanceDays({
+    setG(prev => leagueTick(collectPortIncome(advanceDays({
       ...prev,
       player: { ...prev.player, currentPortId: destId, gameDay: prev.player.gameDay + days, voyages: prev.player.voyages + 1 },
-    }, days)));
+    }, days))));
     setIsTraveling(false);
     setTargetPortId(null);
     setSelectedPortId(null);
@@ -693,11 +706,18 @@ const App: React.FC = () => {
         gold: prev.player.gold + goldWon,
         cargo: { ...prev.player.cargo, [b.loot.good]: prev.player.cargo[b.loot.good] + taken },
         reputation: { ...prev.player.reputation, [b.destId]: Math.min(100, (prev.player.reputation?.[b.destId] || 0) + PIRATE_REP) },
-        defeatedRivals: b.rival && !prev.player.defeatedRivals.includes(b.rival.id)
+        defeatedRivals: b.rival && !isLeagueRival(b.rival) && !prev.player.defeatedRivals.includes(b.rival.id)
           ? [...prev.player.defeatedRivals, b.rival.id]
           : prev.player.defeatedRivals,
       },
     }));
+    if (b.rival && isLeagueRival(b.rival)) {
+      const rid = b.rival.id;
+      setG(prev => ({ ...prev, player: leagueBeaten(prev.player, rid) }));
+      setTimeout(() => setNotice(rid === LEAGUE_FLAGSHIP.id
+        ? { title: 'The League Is Broken', body: 'The Black Tide is sunk and Admiral Mora with it. The League scatters, and every harbour it held is back on the market.' }
+        : { title: 'Harbour Freed', body: `${b.rival!.name} strikes his colours. This harbour is free of the League and its Harbor Master will deal with you again.` }), 2400);
+    }
 
     const cargoLine = taken > 0
       ? ` and ${taken} ${b.loot.good}${taken < amtWanted ? ' (hold full)' : ''}`
@@ -1085,7 +1105,8 @@ const App: React.FC = () => {
             {/* Top Port Crest */}
             <div className="absolute top-2.5 left-0 right-0 flex flex-col items-center pointer-events-none z-30 px-4">
               <div className="bg-[#1d120b]/85 backdrop-blur-sm border border-[#c8963e]/70 rounded-full px-4 py-1 shadow-xl flex items-center gap-2">
-                {ownsHere && <span title="Your harbour" className="text-[#f8d77d] text-base leading-none">⚑</span>}
+                {ownsHere && <span className="w-[18px] h-[18px] rounded-full bg-[#f5c749] border border-[#5b3508] text-[#3a2206] text-[11px] leading-none flex items-center justify-center shadow">⚑</span>}
+                {leagueHere && <span className="w-[18px] h-[18px] rounded-full bg-[#1a1210] border border-[#f06458] text-[#f06458] text-[11px] leading-none flex items-center justify-center shadow">☠</span>}
                 <h1 className="font-display text-lg font-black uppercase tracking-widest text-[#f8d77d]">
                   {currentPort.name}
                 </h1>
@@ -1135,6 +1156,10 @@ const App: React.FC = () => {
                     <p className="text-xs font-semibold text-[#2b1d12] leading-snug">
                       {readyContract
                         ? `Deliver ${readyContract.amount} ${readyContract.good} for ${readyContract.rewardGold.toLocaleString()} gold!`
+                        : leagueHere
+                          ? `The ${LEAGUE_NAME} holds this harbour. Beat ${leagueCaptain(currentPort).name} to free it.`
+                        : flagshipHere && ownsHere
+                          ? `The League's flagship, the Black Tide, is hunting you. Fight it when you are ready.`
                         : player.hasWonGame && !ownsHere
                           ? `This harbour can be yours for ${portPrice(currentPort.id).toLocaleString()} gold${(player.reputation?.[currentPort.id] || 0) >= PORT_OWN_REP ? '.' : ' once you are a Patron here.'}`
                         : ownsHere && !hullLow
@@ -1150,6 +1175,13 @@ const App: React.FC = () => {
                       className="btn-brass px-3 py-2 rounded-xl text-[10px] font-black uppercase shrink-0"
                     >
                       Claim
+                    </button>
+                  ) : leagueHere || (flagshipHere && ownsHere) ? (
+                    <button
+                      onClick={() => handleHuntRival(leagueHere ? leagueCaptain(currentPort) : LEAGUE_FLAGSHIP)}
+                      className="btn-brass px-3 py-2 rounded-xl text-[10px] font-black uppercase shrink-0"
+                    >
+                      {leagueHere ? 'Challenge' : 'Fight'}
                     </button>
                   ) : player.hasWonGame && !ownsHere ? (
                     <button
@@ -1239,8 +1271,11 @@ const App: React.FC = () => {
                             alt=""
                             draggable="false"
                           />
+                          {leagueHolds(player, p.id) && (
+                            <span className="absolute -top-2 -left-2 w-[18px] h-[18px] rounded-full bg-[#1a1210] border border-[#f06458] text-[#f06458] text-[11px] leading-none flex items-center justify-center shadow">☠</span>
+                          )}
                           {ownsPort(player, p.id) && (
-                            <span className="absolute -top-2 -left-1.5 text-[15px] leading-none text-[#f8d77d] drop-shadow-[0_1px_1px_#000]">⚑</span>
+                            <span className="absolute -top-2 -left-2 w-[18px] h-[18px] rounded-full bg-[#f5c749] border border-[#5b3508] text-[#3a2206] text-[11px] leading-none flex items-center justify-center shadow">⚑</span>
                           )}
                           {(hasContractHere || hasRumorHere || hasRivalHere) && (
                             <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#1d120b] border border-[#e8be63] flex items-center justify-center text-[#f8d77d]">
@@ -1573,7 +1608,7 @@ const App: React.FC = () => {
                   disabled={repairPoints <= 0}
                   className="w-full btn-teal disabled:opacity-40 py-3 rounded-xl font-display font-black uppercase tracking-wider text-xs flex items-center justify-center gap-2"
                 >
-                  {hullDamage <= 0 ? 'Hull Is Sound' : repairPoints <= 0 ? 'Not Enough Gold to Repair' : repairCost === 0 ? 'Repair Hull (Free in Your Harbour)' : (<>Repair Hull <Gold n={repairCost} /></>)}
+                  {hullDamage <= 0 ? 'Hull Is Sound' : leagueHere ? 'The League Refuses You Repairs' : repairPoints <= 0 ? 'Not Enough Gold to Repair' : repairCost === 0 ? 'Repair Hull (Free in Your Harbour)' : (<>Repair Hull <Gold n={repairCost} /></>)}
                 </button>
               </div>
 
