@@ -2,7 +2,7 @@ import React from 'react';
 
 export interface ShipArtProps {
   tier: number;
-  variant?: 'player' | 'pirate' | 'syndicate';
+  variant?: 'player' | 'pirate' | 'syndicate' | 'league';
   upgrades?: string[];
   size?: 'port' | 'map' | 'shipyard' | 'battle';
   facing?: 'left' | 'right';
@@ -18,6 +18,7 @@ const SIZE_CLASSES: Record<NonNullable<ShipArtProps['size']>, Record<number, str
 };
 
 const SHIP_SPRITE = (tier: number, variant: NonNullable<ShipArtProps['variant']>) => {
+  if (variant === 'league') return '/assets/ships/ship_league.webp';
   if (variant === 'syndicate') return '/assets/ships/ship_syndicate.webp';
   if (variant === 'pirate') return '/assets/ships/ship_pirate.webp';
   return `/assets/ships/ship_t${Math.max(1, Math.min(4, tier))}.webp`;

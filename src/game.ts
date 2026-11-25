@@ -114,6 +114,19 @@ export interface LeagueState {
 }
 export const emptyLeague = (): LeagueState => ({ warnedDay: null, ports: {}, freed: {}, nextMoveDay: 0, defeated: false, news: [] });
 
+export interface TradeShip {
+  id: string;
+  name: string;
+  tier: number;                 // 1 Tartane, 2 Brigantine, 3 Frigate, 4 Galleon
+  upgrades: string[];           // the same four fittings as your flagship: hull, cannons, supports, sails
+  fromId: string | null;        // buys here...
+  toId: string | null;          // ...sells here, then sails back empty
+  good: CommodityType | null;
+  progress: number;             // days into the current round trip
+  strongbox: number;            // everything she has earned you so far
+  lastTrip: number;             // what the last round trip cleared (0 = made nothing)
+}
+
 export interface Player {
   gold: number;
   fleet: Ship[];
@@ -133,6 +146,8 @@ export interface Player {
   hasWonEmpire: boolean;
   /** The rival house that turns up in the second chapter and buys harbours too. */
   league: LeagueState;
+  /** Second chapter: ships you own that trade a route on their own. */
+  traders: TradeShip[];
   seenGuide: boolean;
   voyages: number;
 }
@@ -641,6 +656,118 @@ export const collectPortIncome = (g: GameState): GameState => {
   const due = portIncomeDue(g.player, id);
   if (!ownsPort(g.player, id)) return g;
   return { ...g, player: { ...g.player, gold: g.player.gold + due, ownedPorts: { ...g.player.ownedPorts, [id]: g.player.gameDay } } };
+};
+
+// --- TRADING FLEET: ships that work a route for you (second chapter) ---
+
+export const MAX_TRADERS = 3;
+export const TRADER_CLASSES: { tier: number; shipClass: string; cost: number; hold: number; wage: number }[] = [
+  { tier: 1, shipClass: 'Tartane', cost: 9000, hold: 18, wage: 25 },
+  { tier: 2, shipClass: 'Brigantine', cost: 22000, hold: 36, wage: 55 },
+  { tier: 3, shipClass: 'Frigate', cost: 45000, hold: 60, wage: 110 },
+  { tier: 4, shipClass: 'Galleon', cost: 90000, hold: 100, wage: 200 },   // not sold: a Frigate is rebuilt into one
+];
+/** The same four fittings your flagship takes, and what each does for a ship that trades on her own. */
+export const TRADER_UPGRADES: { id: string; label: string; description: string }[] = [
+  { id: 'hull', label: 'Bigger Hold', description: 'Carries half as much again.' },
+  { id: 'cannons', label: 'Heavy Cannons', description: 'Sees off pirates: 15% more profit.' },
+  { id: 'supports', label: 'Iron Supports', description: 'Rides out storms: 15% more profit.' },
+  { id: 'sails', label: 'Storm Sails', description: 'A day quicker each way.' },
+];
+const has = (t: TradeShip, id: string) => (t.upgrades || []).includes(id);
+const TRADER_NAMES = ['Santa Lucia', 'Stella Maris', 'La Fortuna', 'San Marco', 'Bella Rosa', 'Il Delfino'];
+export const traderClass = (t: TradeShip) => TRADER_CLASSES.find(c => c.tier === t.tier) || TRADER_CLASSES[0];
+export const traderHold = (t: TradeShip) => Math.round(traderClass(t).hold * (has(t, 'hull') ? 1.5 : 1));
+export const traderUpgradeCost = (t: TradeShip) => Math.round(traderClass(t).cost * 0.2);
+const traderBonus = (t: TradeShip) => 1 + (has(t, 'cannons') ? 0.15 : 0) + (has(t, 'supports') ? 0.15 : 0);
+/** A whole fleet's cargo moves the market, so a trader only gets this share of the price gap you would (a quarter). */
+const TRADER_MARGIN = 0.25;
+const TRADER_UNIT_CAP = 20;
+
+export const traderTripDays = (g: GameState, t: TradeShip) => {
+  const a = g.ports.find(p => p.id === t.fromId), b = g.ports.find(p => p.id === t.toId);
+  if (!a || !b) return 0;
+  return 2 * Math.max(1, voyageDays(a, b, false) - (has(t, 'sails') ? 1 : 0));
+};
+/** What one round trip on this route clears today, after wages. Zero or less means the route is not worth sailing. */
+export const routeProfit = (g: GameState, t: TradeShip, fromId = t.fromId, toId = t.toId, good = t.good) => {
+  const a = g.ports.find(p => p.id === fromId), b = g.ports.find(p => p.id === toId);
+  if (!a || !b || !good || a.id === b.id) return 0;
+  const gap = sellPrice(b, good, g.events) - buyPrice(a, good, g.events);
+  const days = 2 * Math.max(1, voyageDays(a, b, false) - (has(t, 'sails') ? 1 : 0));
+  // A hired captain never does as well as you would: a quarter of the gap, and no more than a fixed sum per unit
+  // for each day the route normally takes (so faster sails still earn more).
+  const perUnit = Math.min(gap * TRADER_MARGIN, TRADER_UNIT_CAP * 2 * voyageDays(a, b, false));
+  return Math.round(perUnit * traderHold(t) * traderBonus(t) - traderClass(t).wage * days);
+};
+export const traderBlocked = (p: Player, t: TradeShip) => Boolean((t.fromId && leagueHolds(p, t.fromId)) || (t.toId && leagueHolds(p, t.toId)));
+/** The three most profitable goods to carry between two ports right now. */
+export const bestGoods = (g: GameState, t: TradeShip, fromId: string, toId: string) =>
+  COMMODITIES.map(good => ({ good, profit: routeProfit(g, t, fromId, toId, good) })).sort((x, y) => y.profit - x.profit).slice(0, 4);
+
+export const buyTrader = (g: GameState, tier: number): GameState => {
+  const cls = TRADER_CLASSES.find(c => c.tier === tier && c.tier <= 3);
+  const p = g.player;
+  if (!cls || !p.hasWonGame || p.traders.length >= MAX_TRADERS || p.gold < cls.cost) return g;
+  const name = TRADER_NAMES.find(n => !p.traders.some(t => t.name === n)) || `Trader ${p.traders.length + 1}`;
+  const ship: TradeShip = { id: newId(), name, tier, upgrades: [], fromId: null, toId: null, good: null, progress: 0, strongbox: 0, lastTrip: 0 };
+  // She starts work at once on the best route going today; you can change it whenever you like.
+  let best: { a: string; b: string; good: CommodityType; profit: number } | null = null;
+  for (const a of g.ports) for (const b of g.ports) {
+    if (a.id === b.id || leagueHolds(p, a.id) || leagueHolds(p, b.id)) continue;
+    const top = bestGoods(g, ship, a.id, b.id)[0];
+    if (top.profit > 0 && (!best || top.profit / traderTripDays(g, { ...ship, fromId: a.id, toId: b.id }) > best.profit / traderTripDays(g, { ...ship, fromId: best.a, toId: best.b }))) best = { a: a.id, b: b.id, ...top };
+  }
+  if (best) { ship.fromId = best.a; ship.toId = best.b; ship.good = best.good; }
+  return { ...g, player: { ...p, gold: p.gold - cls.cost, traders: [...p.traders, ship] } };
+};
+const patchTrader = (g: GameState, id: string, fn: (t: TradeShip) => TradeShip): GameState =>
+  ({ ...g, player: { ...g.player, traders: g.player.traders.map(t => (t.id === id ? fn(t) : t)) } });
+export const setTraderRoute = (g: GameState, id: string, fromId: string, toId: string, good: CommodityType): GameState =>
+  patchTrader(g, id, t => ({ ...t, fromId, toId, good, progress: 0, lastTrip: 0 }));
+/** Fits one of the four upgrades. With all four fitted she is rebuilt as the next class up, like your flagship. */
+export const upgradeTrader = (g: GameState, id: string, upgradeId: string): GameState => {
+  const t = g.player.traders.find(x => x.id === id);
+  if (!t || has(t, upgradeId) || !TRADER_UPGRADES.some(u => u.id === upgradeId) || g.player.gold < traderUpgradeCost(t)) return g;
+  const paid = { ...g, player: { ...g.player, gold: g.player.gold - traderUpgradeCost(t) } };
+  return patchTrader(paid, id, x => {
+    const upgrades = [...(x.upgrades || []), upgradeId];
+    return upgrades.length >= TRADER_UPGRADES.length && x.tier < 4 ? { ...x, tier: x.tier + 1, upgrades: [] } : { ...x, upgrades };
+  });
+};
+
+/** Moves every trading ship along its route for the days that just passed. Each finished round trip pays straight
+ *  into your gold, wherever you are. Her captain carries whatever pays best on that route at the time. */
+export const advanceTraders = (g: GameState, days: number): GameState => {
+  if (!g.player.traders?.length) return g;
+  let paid = 0;
+  const traders = g.player.traders.map(t => {
+    const trip = traderTripDays(g, t);
+    if (!trip || !t.fromId || !t.toId || traderBlocked(g.player, t)) return t;
+    const top = bestGoods(g, t, t.fromId, t.toId)[0];
+    let progress = t.progress + days, strongbox = t.strongbox, lastTrip = t.lastTrip;
+    while (progress >= trip) {
+      progress -= trip;
+      lastTrip = top.profit;
+      if (top.profit > 0) { strongbox += top.profit; paid += top.profit; }
+    }
+    return { ...t, good: top.good, progress, strongbox, lastTrip };
+  });
+  return { ...g, player: { ...g.player, gold: g.player.gold + paid, traders } };
+};
+/** Roughly what the whole fleet brings in per day at today's prices. */
+export const fleetDailyIncome = (g: GameState) =>
+  (g.player.traders || []).reduce((sum, t) => {
+    const trip = traderTripDays(g, t);
+    if (!trip || !t.fromId || !t.toId || traderBlocked(g.player, t)) return sum;
+    return sum + Math.max(0, bestGoods(g, t, t.fromId, t.toId)[0].profit) / trip;
+  }, 0);
+/** Where a trading ship is on its round trip, 0..1 out and 1..0 back. */
+export const traderLeg = (g: GameState, t: TradeShip) => {
+  const trip = traderTripDays(g, t);
+  if (!trip) return null;
+  const f = (t.progress % trip) / trip;
+  return f < 0.5 ? { t: f * 2, outbound: true } : { t: 1 - (f - 0.5) * 2, outbound: false };
 };
 
 // --- THE CORSAIR LEAGUE: pirates turned merchants, buying harbours against you ---
@@ -1233,6 +1360,7 @@ const newPlayer = (): Player => {
     ownedPorts: {},
     hasWonEmpire: false,
     league: emptyLeague(),
+    traders: [],
     seenGuide: false,
     voyages: 0,
   };
@@ -1266,6 +1394,9 @@ export const loadGame = (): GameState => {
       officers: Array.isArray(savedPlayer.officers) ? savedPlayer.officers : [],
       contracts: Array.isArray(savedPlayer.contracts) ? savedPlayer.contracts : [],
       ownedPorts: savedPlayer.ownedPorts && typeof savedPlayer.ownedPorts === 'object' ? savedPlayer.ownedPorts : {},
+      traders: Array.isArray(savedPlayer.traders)
+        ? (savedPlayer.traders as any[]).map(t => ({ ...t, upgrades: Array.isArray(t.upgrades) ? t.upgrades : [...(t.holdLvl ? ['hull'] : []), ...(t.sailLvl ? ['sails'] : [])] }))
+        : [],
       league: { ...emptyLeague(), ...(savedPlayer.league && typeof savedPlayer.league === 'object' ? savedPlayer.league : {}) },
       reputation: savedPlayer.reputation && typeof savedPlayer.reputation === 'object' ? savedPlayer.reputation : {},
       defeatedRivals: Array.isArray(savedPlayer.defeatedRivals) ? savedPlayer.defeatedRivals : [],

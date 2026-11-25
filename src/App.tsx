@@ -9,6 +9,7 @@ import { CantinaGames } from './components/CantinaGames';
 import type { PubGameType } from './components/CantinaGames';
 import { LedgerModal } from './components/LedgerModal';
 import { Celebration } from './components/Celebration';
+import { FleetCard, UpgradeRow, TraderCard } from './components/TradingFleet';
 import { VoyageEventModal } from './components/VoyageEventModal';
 import {
   CommodityIcon, IconScales, IconHammer, IconCompass,
@@ -23,6 +24,7 @@ import {
   advanceDays, learnRumor, voyageDays, rollAmbush, rollWeather, routeTip, tradeRole, emptyCargo, pickMinigame,
   PIRATE_REP, REP_STEPS, sellRepGain,
   LEAGUE_NAME, LEAGUE_FLAGSHIP, leagueHolds, leagueCaptain, isLeagueRival, flagshipReady, leagueTick, leagueBeaten,
+  buyTrader, setTraderRoute, upgradeTrader, advanceTraders, traderLeg, MAX_TRADERS, TRADER_CLASSES,
   PORT_OWN_REP, portPrice, portDailyIncome, ownsPort, portIncomeDue, canBuyPort, buyPort, collectPortIncome,
   computeSeaRoute, pointAlongRoute, routeToSmoothPath, smoothRoute, totalCargoCapacity, totalFirepower, effectiveSpeed, reputationTier,
   acceptContract, claimContract, rollSeaEvent,
@@ -132,13 +134,14 @@ const App: React.FC = () => {
   const [showGuide, setShowGuide] = useState(false);
   const [notice, setNotice] = useState<{ title: string; body: string } | null>(null);
   const [portOffer, setPortOffer] = useState(false);
+  const [repOpen, setRepOpen] = useState(false);
+  const [yardOpen, setYardOpen] = useState<string | null>('flagship');
   const [toast, setToast] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(audioManager.getMuted());
   const [evolved, setEvolved] = useState<{ oldClass: string; ship: Ship } | null>(null);
 
   // Market & Shipyard sub-controls
   const [marketFilter, setMarketFilter] = useState<'featured' | 'all'>('featured');
-  const [shipSubTab, setShipSubTab] = useState<'upgrades' | 'fleet'>('upgrades');
   const [defaultPubGame, setDefaultPubGame] = useState<PubGameType>('dice');
 
   // Layout editor
@@ -167,7 +170,7 @@ const App: React.FC = () => {
   // Panning containers & aspect widths
   const portScrollRef = useRef<HTMLDivElement | null>(null);
   // Ports that have a layered scene can be shown that way or as the original painting.
-  const [layeredPorts, setLayeredPorts] = useState(() => localStorage.getItem('med_merchants_layered') !== 'off');
+  const layeredPorts = true;   // the layered harbour is the only view now
   const mapScrollRef = useRef<HTMLDivElement | null>(null);
   // Load the harbour pictures ahead of need: this port first, then the one picked on the map, then the rest.
   const preloadKey = `${g.player.currentPortId}|${selectedPortId || ''}`;
@@ -209,6 +212,10 @@ const App: React.FC = () => {
   const ownedCount = ports.filter(p => ownsPort(player, p.id)).length;
   const ownsHere = ownsPort(player, currentPort.id);
   const leagueHere = leagueHolds(player, currentPort.id);
+  const repPts = player.reputation?.[currentPort.id] || 0;
+  const repNext = REP_STEPS.find(st => st.at > repPts) || null;
+  const repPrev = [...REP_STEPS].reverse().find(st => st.at <= repPts)!;
+  const repBar = repNext ? Math.round(((repPts - repPrev.at) / (repNext.at - repPrev.at)) * 100) : 100;
   const flagshipHere = flagshipReady(g) && !leagueHere;
   // Tell the player what the League did while they were at sea, once they are back in port.
   const leagueNews = player.league?.news || [];
@@ -531,10 +538,16 @@ const App: React.FC = () => {
     const p0 = gRef.current.player;
     const takings = portIncomeDue({ ...p0, gameDay: arrivalDay }, destId);
     if (takings > 0) setTimeout(() => say(`Your harbour in ${dest?.name || 'port'} paid you ${takings.toLocaleString()} gold.`), lapsed.length ? 6200 : 2600);
-    setG(prev => leagueTick(collectPortIncome(advanceDays({
-      ...prev,
-      player: { ...prev.player, currentPortId: destId, gameDay: prev.player.gameDay + days, voyages: prev.player.voyages + 1 },
-    }, days))));
+    // Worked out once, here, so the fleet's pay can be announced with the right figure.
+    const sailed = collectPortIncome(advanceDays({
+      ...gRef.current,
+      player: { ...p0, currentPortId: destId, gameDay: arrivalDay, voyages: p0.voyages + 1 },
+    }, days));
+    const traded = advanceTraders(sailed, days);
+    const fleetPay = traded.player.gold - sailed.player.gold;
+    if (fleetPay > 0) setTimeout(() => say(`Your trading ships earned ${fleetPay.toLocaleString()} gold while you sailed.`), (lapsed.length ? 6200 : 2600) + (takings > 0 ? 3600 : 0));
+    setG(leagueTick(traded));
+
     setIsTraveling(false);
     setTargetPortId(null);
     setSelectedPortId(null);
@@ -1104,40 +1117,35 @@ const App: React.FC = () => {
 
             {/* Top Port Crest */}
             <div className="absolute top-2.5 left-0 right-0 flex flex-col items-center pointer-events-none z-30 px-4">
-              <div className="bg-[#1d120b]/85 backdrop-blur-sm border border-[#c8963e]/70 rounded-full px-4 py-1 shadow-xl flex items-center gap-2">
-                {ownsHere && <span className="w-[18px] h-[18px] rounded-full bg-[#f5c749] border border-[#5b3508] text-[#3a2206] text-[11px] leading-none flex items-center justify-center shadow">⚑</span>}
-                {leagueHere && <span className="w-[18px] h-[18px] rounded-full bg-[#1a1210] border border-[#f06458] text-[#f06458] text-[11px] leading-none flex items-center justify-center shadow">☠</span>}
-                <h1 className="font-display text-lg font-black uppercase tracking-widest text-[#f8d77d]">
-                  {currentPort.name}
-                </h1>
-                <button
-                  onClick={() => {
-                    audioManager.playSfx('click');
-                    const pts = player.reputation?.[currentPort.id] || 0;
-                    const next = REP_STEPS.find(s => s.at > pts);
-                    setNotice({
-                      title: `${currentRep.label} in ${currentPort.name}`,
-                      body: `Standing ${pts}/100${next ? `, ${next.at - pts} more to become ${next.label}` : ', the highest there is'}. Higher standing means cheaper buying and better selling here (Known 2.5%, Trusted 5%, Patron 8%). Earn it three ways: sell this port what it pays well for (+1 per 2 units), deliver charters here (+15 or more), and sink pirates on your way in (+${PIRATE_REP}).`,
-                    });
-                  }}
-                  className="pointer-events-auto text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#16626d] text-[#e6fbff] flex items-center gap-1"
-                >
-                  {currentRep.label} {player.reputation?.[currentPort.id] || 0}
-                  <span className="opacity-70">ⓘ</span>
+              <div className="pointer-events-auto bg-[#1d120b]/85 backdrop-blur-sm border border-[#c8963e]/70 rounded-full shadow-xl flex items-stretch overflow-hidden">
+                <button onClick={() => { audioManager.playSfx('click'); setRepOpen(true); }} className="pl-3.5 pr-3 py-1 flex items-center gap-2" aria-label="Your standing here">
+                  {ownsHere && <span className="w-[18px] h-[18px] rounded-full bg-[#f5c749] border border-[#5b3508] text-[#3a2206] text-[11px] leading-none flex items-center justify-center shadow">⚑</span>}
+                  {leagueHere && <span className="w-[18px] h-[18px] rounded-full bg-[#1a1210] border border-[#f06458] text-[#f06458] text-[11px] leading-none flex items-center justify-center shadow">☠</span>}
+                  <h1 className="font-display text-lg font-black uppercase tracking-widest text-[#f8d77d]">{currentPort.name}</h1>
+                  {/* standing: one pip per level reached */}
+                  <span className="flex gap-[3px]" title={`Standing: ${currentRep.label}`}>
+                    {REP_STEPS.slice(1).map(st => (
+                      <span key={st.label} className={`w-[7px] h-[7px] rounded-full ${repPts >= st.at ? 'bg-[#3fd0e0]' : 'bg-[#4a3a2a]'}`} />
+                    ))}
+                  </span>
                 </button>
+                {!isEditMode && (leagueHere || (flagshipHere && ownsHere)) && (
+                  <button
+                    onClick={() => handleHuntRival(leagueHere ? leagueCaptain(currentPort) : LEAGUE_FLAGSHIP)}
+                    className="px-3 bg-[#a72d22] text-white font-display text-[11px] font-black uppercase tracking-wider"
+                  >
+                    {leagueHere ? 'Free It' : 'Fight'}
+                  </button>
+                )}
+                {!isEditMode && player.hasWonGame && !ownsHere && !leagueHere && (
+                  <button
+                    onClick={() => { audioManager.playSfx('click'); setPortOffer(true); }}
+                    className={`px-3.5 font-display text-[11px] font-black uppercase tracking-wider ${canBuyPort(g, currentPort.id) ? 'bg-[#f5c749] text-[#3a2206] animate-pulse' : 'bg-[#7a5a22] text-[#f6e7c0]'}`}
+                  >
+                    Buy
+                  </button>
+                )}
               </div>
-              {hasLayeredScene && !isEditMode && (
-                <button
-                  onClick={() => {
-                    audioManager.playSfx('click');
-                    localStorage.setItem('med_merchants_layered', layeredPorts ? 'off' : 'on');
-                    setLayeredPorts(!layeredPorts);
-                  }}
-                  className="mt-1.5 pointer-events-auto text-[9px] font-black uppercase tracking-widest bg-[#1d120b]/85 text-[#f8e6c1] border border-[#c8963e]/60 px-3 py-1 rounded-full active:scale-95"
-                >
-                  {layeredPorts ? 'Show painted view' : 'Show layered view'}
-                </button>
-              )}
               {isEditMode && (
                 <span className="mt-1 text-[10px] font-black uppercase tracking-widest bg-[#a72d22] text-white px-3 py-0.5 rounded-full">
                   Layout Editor: Drag to Move
@@ -1156,16 +1164,10 @@ const App: React.FC = () => {
                     <p className="text-xs font-semibold text-[#2b1d12] leading-snug">
                       {readyContract
                         ? `Deliver ${readyContract.amount} ${readyContract.good} for ${readyContract.rewardGold.toLocaleString()} gold!`
-                        : leagueHere
-                          ? `The ${LEAGUE_NAME} holds this harbour. Beat ${leagueCaptain(currentPort).name} to free it.`
-                        : flagshipHere && ownsHere
-                          ? `The League's flagship, the Black Tide, is hunting you. Fight it when you are ready.`
-                        : player.hasWonGame && !ownsHere
-                          ? `This harbour can be yours for ${portPrice(currentPort.id).toLocaleString()} gold${(player.reputation?.[currentPort.id] || 0) >= PORT_OWN_REP ? '.' : ' once you are a Patron here.'}`
-                        : ownsHere && !hullLow
-                          ? `Your harbour. It earns ${portDailyIncome(currentPort.id).toLocaleString()} gold a day and repairs are free.`
-                        : hullLow
+                        : hullLow && !leagueHere
                           ? 'Your hull is dangerously low. Repair at the Shipyard before sailing.'
+                        : ownsHere
+                          ? `Your harbour. It earns ${portDailyIncome(currentPort.id).toLocaleString()} gold a day and repairs are free.`
                           : routeTip(currentPort, ports, events)}
                     </p>
                   </div>
@@ -1175,20 +1177,6 @@ const App: React.FC = () => {
                       className="btn-brass px-3 py-2 rounded-xl text-[10px] font-black uppercase shrink-0"
                     >
                       Claim
-                    </button>
-                  ) : leagueHere || (flagshipHere && ownsHere) ? (
-                    <button
-                      onClick={() => handleHuntRival(leagueHere ? leagueCaptain(currentPort) : LEAGUE_FLAGSHIP)}
-                      className="btn-brass px-3 py-2 rounded-xl text-[10px] font-black uppercase shrink-0"
-                    >
-                      {leagueHere ? 'Challenge' : 'Fight'}
-                    </button>
-                  ) : player.hasWonGame && !ownsHere ? (
-                    <button
-                      onClick={() => { audioManager.playSfx('click'); setPortOffer(true); }}
-                      className="btn-brass px-3 py-2 rounded-xl text-[10px] font-black uppercase shrink-0"
-                    >
-                      Buy Port
                     </button>
                   ) : (
                     <button
@@ -1309,6 +1297,22 @@ const App: React.FC = () => {
                 ))}
 
                 {/* Sailing Ship Following Water Route */}
+                {/* Your trading ships, out on their routes */}
+                {!isEditMode && (player.traders || []).map(t => {
+                  const leg = traderLeg(g, t);
+                  const a = ports.find(p => p.id === t.fromId), b = ports.find(p => p.id === t.toId);
+                  if (!leg || !a || !b) return null;
+                  const route = smoothRoute(computeSeaRoute(a, b));
+                  const pos = pointAlongRoute(route, Math.min(0.94, Math.max(0.06, leg.t)));
+                  const goingRight = (b.x >= a.x) === leg.outbound;
+                  return (
+                    <div key={t.id} className="absolute z-20 pointer-events-none flex flex-col items-center" style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: 'translate(-50%, -60%)' }}>
+                      <div style={{ zoom: 0.6 }}><ShipArt tier={t.tier} variant="player" size="map" facing={goingRight ? 'right' : 'left'} /></div>
+                      <span className="text-[7px] font-black uppercase tracking-wider text-[#f8d77d] bg-[#1d120b]/85 rounded px-1 -mt-0.5 whitespace-nowrap">{t.name}</span>
+                    </div>
+                  );
+                })}
+
                 {isTraveling && sailingShipPos && endPort && (
                   <div
                     id="sailing-ship"
@@ -1483,7 +1487,7 @@ const App: React.FC = () => {
                                 <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-[#146c54]/15 text-[#12695b]">Cheap</span>
                               )}
                               {role === 'wants' && (
-                                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-[#b86e14]/15 text-[#8a4d09]">In Demand</span>
+                                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-[#b86e14]/15 text-[#8a4d09]">In Demand · +Standing</span>
                               )}
                               {hasContract && (
                                 <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-[#166c78]/15 text-[#135a64]">Charter</span>
@@ -1559,166 +1563,97 @@ const App: React.FC = () => {
         {tab === 'ship' && (
           <div className="flex-1 flex flex-col relative overflow-hidden min-h-0 bg-[#170f0a] anim-fade">
             <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar min-h-0">
-              {/* Flagship Showcase */}
-              <div className="parchment rounded-3xl p-4 space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="font-display text-xl font-black uppercase text-[#2b1d12] leading-tight">
-                      {flagship.name}
-                    </h2>
-                    <p className="text-[11px] font-extrabold uppercase tracking-widest text-[#7a4b15]">
-                      {flagship.shipClass} · Tier {flagship.tier}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl bg-gradient-to-b from-[#347c90] to-[#134252] border border-[#b69150] px-3 py-1.5 flex items-center justify-center shadow-inner">
-                    <ShipArt
-                      tier={flagship.tier}
-                      variant="player"
-                      upgrades={flagship.upgrades}
-                      size="shipyard"
-                      facing="right"
-                    />
-                  </div>
-                </div>
-
-                {/* Fleet Stats */}
-                <div className="grid grid-cols-4 gap-1.5 text-center">
-                  {[
-                    ['Hull', `${flagship.hullHealth.current}/${flagship.hullHealth.max}`],
-                    ['Hold', maxCargo],
-                    ['Guns', totalFirepower(player)],
-                    ['Speed', effectiveSpeed(player)],
-                  ].map(([label, val]) => (
-                    <div key={label} className="parchment-card rounded-xl py-1.5">
-                      <div className="text-sm font-black text-[#2b1d12]">{val}</div>
-                      <div className="text-[9px] font-extrabold uppercase tracking-wider text-[#6d4918]">{label}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="w-full bg-[#24160e] h-2.5 rounded-full overflow-hidden p-0.5">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${hullLow ? 'bg-[#c93e32]' : 'bg-[#1f98a6]'}`}
-                    style={{ width: `${hullPct}%` }}
-                  />
-                </div>
-
-                <button
-                  onClick={repair}
-                  disabled={repairPoints <= 0}
-                  className="w-full btn-teal disabled:opacity-40 py-3 rounded-xl font-display font-black uppercase tracking-wider text-xs flex items-center justify-center gap-2"
-                >
-                  {hullDamage <= 0 ? 'Hull Is Sound' : leagueHere ? 'The League Refuses You Repairs' : repairPoints <= 0 ? 'Not Enough Gold to Repair' : repairCost === 0 ? 'Repair Hull (Free in Your Harbour)' : (<>Repair Hull <Gold n={repairCost} /></>)}
-                </button>
-              </div>
-
-              {/* Sub-tabs: Upgrades vs Fleet & Crew */}
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setShipSubTab('upgrades')}
-                  className={`py-2.5 rounded-xl font-display text-xs font-black uppercase tracking-wider border ${
-                    shipSubTab === 'upgrades' ? 'btn-brass' : 'bg-[#2a1a10] text-[#d6c29f] border-[#a87e3b]/50'
-                  }`}
-                >
-                  Ship Upgrades ({flagship.upgrades.length}/4)
-                </button>
-                <button
-                  onClick={() => setShipSubTab('fleet')}
-                  className={`py-2.5 rounded-xl font-display text-xs font-black uppercase tracking-wider border ${
-                    shipSubTab === 'fleet' ? 'btn-brass' : 'bg-[#2a1a10] text-[#d6c29f] border-[#a87e3b]/50'
-                  }`}
-                >
-                  Fleet & Crew ({player.escorts.length + player.officers.length})
-                </button>
-              </div>
-
-              {shipSubTab === 'upgrades' ? (
-                <div className="space-y-2">
-                  <p className="text-xs text-[#d6c29f] px-1">
-                    {nextClass
-                      ? `Fit all four upgrades to rebuild her as a ${nextClass}.`
-                      : 'She is a Galleon — the finest class on the Mediterranean.'}
-                  </p>
-                  {upgrades.map(u => {
-                    const isOwned = flagship.upgrades.includes(u.id);
-                    const canAfford = player.gold >= u.cost;
-                    return (
-                      <div key={u.id} className={`parchment-card p-3.5 rounded-2xl flex justify-between items-center gap-3 ${isOwned ? 'opacity-65' : ''}`}>
-                        <div className="min-w-0">
-                          <h4 className="font-display font-black text-sm uppercase text-[#2b1d12]">{u.label}</h4>
-                          <p className="text-xs text-[#5d4229]">{u.description}</p>
-                        </div>
-                        <button
-                          onClick={() => buyUpgrade(u.id)}
-                          disabled={isOwned || !canAfford}
-                          className={`shrink-0 px-3.5 py-2.5 rounded-xl text-xs font-black uppercase ${
-                            isOwned ? 'bg-[#12695b] text-white' : canAfford ? 'btn-brass' : 'bg-[#c9b795] text-[#6d5c43]'
-                          }`}
-                        >
-                          {isOwned ? 'Fitted' : <Gold n={u.cost} />}
-                        </button>
+              {/* THE FLEET: every ship is a card; tap one to open it */}
+              {(() => {
+                const toggle = (id: string) => () => { audioManager.playSfx('click'); setYardOpen(o => (o === id ? null : id)); };
+                return (
+                  <>
+                    <FleetCard
+                      open={yardOpen === 'flagship'} onToggle={toggle('flagship')}
+                      art={<div style={{ zoom: 0.8 }}><ShipArt tier={flagship.tier} variant="player" upgrades={flagship.upgrades} size="map" facing="right" /></div>}
+                      title={flagship.name}
+                      sub={`Your flagship · ${flagship.shipClass}`}
+                      right={<span className={`text-xs font-black ${hullLow ? 'text-[#9b251c]' : 'text-[#146572]'}`}>Hull {hullPct}%</span>}
+                    >
+                      <div className="grid grid-cols-4 gap-1.5 text-center">
+                        {[
+                          ['Hull', `${flagship.hullHealth.current}/${flagship.hullHealth.max}`],
+                          ['Hold', maxCargo],
+                          ['Guns', totalFirepower(player)],
+                          ['Speed', effectiveSpeed(player)],
+                        ].map(([label, val]) => (
+                          <div key={label} className="parchment-card rounded-xl py-1.5">
+                            <div className="text-sm font-black text-[#2b1d12]">{val}</div>
+                            <div className="text-[9px] font-extrabold uppercase tracking-wider text-[#6d4918]">{label}</div>
+                          </div>
+                        ))}
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <h3 className="text-[11px] font-black uppercase tracking-[0.18em] text-[#e8be63] px-1">
-                      Hire Officers
-                    </h3>
-                    {OFFICERS.map(off => {
-                      const hired = player.officers.includes(off.id);
-                      const canAfford = player.gold >= off.cost;
-                      return (
-                        <div key={off.id} className={`parchment-card p-3.5 rounded-2xl flex justify-between items-center gap-3 ${hired ? 'opacity-70' : ''}`}>
-                          <div className="min-w-0">
-                            <div className="font-display font-black text-sm text-[#2b1d12]">{off.name}</div>
-                            <div className="text-[10px] font-extrabold uppercase text-[#7d4f0a]">{off.role}</div>
-                            <p className="text-xs text-[#5d4229] mt-0.5">{off.perk}</p>
-                          </div>
-                          <button
-                            onClick={() => hireOfficer(off.id)}
-                            disabled={hired || !canAfford}
-                            className={`shrink-0 px-3 py-2 rounded-xl text-xs font-black uppercase ${
-                              hired ? 'bg-[#12695b] text-white' : canAfford ? 'btn-teal' : 'bg-[#c9b795] text-[#6d5c43]'
-                            }`}
-                          >
-                            {hired ? 'Hired' : <Gold n={off.cost} />}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                      <button
+                        onClick={repair}
+                        disabled={repairPoints <= 0}
+                        className="w-full btn-teal disabled:opacity-40 py-2.5 rounded-xl font-display font-black uppercase tracking-wider text-xs flex items-center justify-center gap-2"
+                      >
+                        {hullDamage <= 0 ? 'Hull Is Sound' : leagueHere ? 'The League Refuses You Repairs' : repairPoints <= 0 ? 'Not Enough Gold to Repair' : repairCost === 0 ? 'Repair Hull (Free in Your Harbour)' : (<>Repair Hull <Gold n={repairCost} /></>)}
+                      </button>
+                      <p className="text-[11px] text-[#5d4229]">
+                        {nextClass ? `Fit all four to rebuild her as a ${nextClass}.` : 'A Galleon: the finest class there is.'}
+                      </p>
+                      {upgrades.map(u => (
+                        <UpgradeRow key={u.id} label={u.label} description={u.description} cost={u.cost}
+                          owned={flagship.upgrades.includes(u.id)} canAfford={player.gold >= u.cost} onBuy={() => buyUpgrade(u.id)} />
+                      ))}
+                    </FleetCard>
 
-                  <div className="space-y-2">
-                    <h3 className="text-[11px] font-black uppercase tracking-[0.18em] text-[#e8be63] px-1">
-                      Escort Ships ({player.escorts.length}/2)
-                    </h3>
-                    {ESCORTS.map(esc => {
-                      const full = player.escorts.length >= 2;
-                      const canAfford = player.gold >= esc.cost;
-                      return (
-                        <div key={esc.id} className="parchment-card p-3.5 rounded-2xl flex justify-between items-center gap-3">
-                          <div className="min-w-0">
-                            <div className="font-display font-black text-sm text-[#2b1d12]">{esc.shipClass}</div>
-                            <p className="text-xs text-[#5d4229] mt-0.5">{esc.description}</p>
-                          </div>
-                          <button
-                            onClick={() => buyEscort(esc)}
-                            disabled={full || !canAfford}
-                            className={`shrink-0 px-3 py-2 rounded-xl text-xs font-black uppercase ${
-                              !full && canAfford ? 'btn-brass' : 'bg-[#c9b795] text-[#6d5c43]'
-                            }`}
-                          >
-                            {full ? 'Max 2' : <Gold n={esc.cost} />}
-                          </button>
+                    {(player.traders || []).map(t => (
+                      <TraderCard
+                        key={t.id} g={g} ship={t} open={yardOpen === t.id} onToggle={toggle(t.id)}
+                        onRoute={(id, a, b, good) => { audioManager.playSfx('click'); setG(prev => setTraderRoute(prev, id, a, b, good)); say('Orders given. She sails with the tide.'); }}
+                        onUpgrade={(id, up) => { audioManager.playSfx('coin'); setG(prev => upgradeTrader(prev, id, up)); }}
+                      />
+                    ))}
+
+                    {player.hasWonGame && (player.traders || []).length < MAX_TRADERS && (
+                      <FleetCard
+                        open={yardOpen === 'buy'} onToggle={toggle('buy')}
+                        art={<span className="text-3xl font-black text-[#8a4d09]">+</span>}
+                        title="Add a Trading Ship"
+                        sub="She trades on her own and pays you daily"
+                      >
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {TRADER_CLASSES.filter(c => c.tier <= 3).map(c => (
+                            <button key={c.tier} disabled={player.gold < c.cost}
+                              onClick={() => { audioManager.playSfx('coin'); setG(prev => buyTrader(prev, c.tier)); setYardOpen(null); say('A new ship joins your fleet and sets off to trade.'); }}
+                              className="btn-brass rounded-xl px-1 py-2 flex flex-col items-center disabled:opacity-40">
+                              <div style={{ zoom: 0.7 }}><ShipArt tier={c.tier} variant="player" size="map" facing="right" /></div>
+                              <div className="text-[10px] font-black uppercase">{c.shipClass}</div>
+                              <div className="text-[11px] font-black">{c.cost.toLocaleString()}</div>
+                            </button>
+                          ))}
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+                      </FleetCard>
+                    )}
+
+                    <FleetCard
+                      open={yardOpen === 'crew'} onToggle={toggle('crew')}
+                      art={<span className="text-2xl">⚓</span>}
+                      title="Crew & Escorts"
+                      sub={`${player.officers.length} officers · ${player.escorts.length}/2 escorts`}
+                    >
+                      {OFFICERS.map(off => {
+                        const hired = player.officers.includes(off.id);
+                        return (
+                          <UpgradeRow key={off.id} label={off.name} description={off.perk} cost={off.cost}
+                            owned={hired} ownedLabel="Hired" canAfford={player.gold >= off.cost} onBuy={() => hireOfficer(off.id)} />
+                        );
+                      })}
+                      {ESCORTS.map(esc => (
+                        <UpgradeRow key={esc.id} label={esc.shipClass} description={esc.description} cost={esc.cost}
+                          owned={player.escorts.length >= 2} ownedLabel="Max 2" canAfford={player.gold >= esc.cost} onBuy={() => buyEscort(esc)} />
+                      ))}
+                    </FleetCard>
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -1958,6 +1893,27 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {/* STANDING, IN SHORT */}
+      {repOpen && (
+        <div className="absolute inset-0 bg-[#0c161f]/80 z-50 flex items-start justify-center pt-24 px-6 anim-fade" onClick={() => setRepOpen(false)}>
+          <div className="parchment p-4 rounded-3xl w-full max-w-xs space-y-2.5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-baseline justify-between">
+              <h2 className="font-display text-base font-black uppercase text-[#8a4d09]">{currentRep.label}</h2>
+              <span className="text-[11px] font-bold text-[#654b32]">{repNext ? `${repPts} / ${repNext.at} to ${repNext.label}` : 'Top standing'}</span>
+            </div>
+            <div className="h-2 rounded-full bg-[#d9c7a0] overflow-hidden"><div className="h-full bg-[#16626d]" style={{ width: `${repBar}%` }} /></div>
+            <p className="text-[11px] text-[#2b1d12] leading-snug">
+              Better standing, better prices{player.hasWonGame ? '. Patron lets you buy the port.' : '.'}
+            </p>
+            <div className="text-[11px] font-bold text-[#2b1d12] space-y-1">
+              <div className="flex justify-between"><span>Sell In Demand goods</span><span className="text-[#146c54]">+1 per 2</span></div>
+              <div className="flex justify-between"><span>Deliver a charter here</span><span className="text-[#146c54]">+15</span></div>
+              <div className="flex justify-between"><span>Beat pirates on the way</span><span className="text-[#146c54]">+{PIRATE_REP}</span></div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* SECOND CHAPTER: BUY THIS HARBOUR */}
       {portOffer && (() => {
         const pts = player.reputation?.[currentPort.id] || 0;
@@ -1967,14 +1923,11 @@ const App: React.FC = () => {
           <div className="absolute inset-0 bg-[#0c161f]/85 z-50 flex items-center justify-center p-5 anim-fade" onClick={() => setPortOffer(false)}>
             <div className="parchment p-5 rounded-3xl w-full max-w-sm text-center space-y-3" onClick={e => e.stopPropagation()}>
               <h2 className="font-display text-xl font-black uppercase text-[#8a4d09]">Buy {currentPort.name}</h2>
-              <p className="text-xs text-[#2b1d12] leading-relaxed">
-                Own this harbour and it pays you {portDailyIncome(currentPort.id).toLocaleString()} gold a day (collected when you dock here, up to 15 days' worth), repairs your ship for free and flies your flag.
-              </p>
+              <p className="text-xs text-[#2b1d12]">Pays {portDailyIncome(currentPort.id).toLocaleString()} gold a day. Free repairs.</p>
               <div className="parchment-card rounded-xl p-3 space-y-1.5 text-xs font-bold text-[#2b1d12]">
                 <div className="flex justify-between"><span>Price</span><span className={goldOk ? '' : 'text-[#9b251c]'}>{price.toLocaleString()} gold {goldOk ? '✓' : `(you have ${player.gold.toLocaleString()})`}</span></div>
                 <div className="flex justify-between"><span>Standing</span><span className={repOk ? '' : 'text-[#9b251c]'}>Patron {repOk ? '✓' : `(${pts}/${PORT_OWN_REP})`}</span></div>
               </div>
-              {!repOk && <p className="text-[11px] text-[#654b32]">Raise your standing by selling {currentPort.name} what it pays well for, delivering charters here and sinking pirates on the way in.</p>}
               <button
                 disabled={!canBuyPort(g, currentPort.id)}
                 onClick={() => {

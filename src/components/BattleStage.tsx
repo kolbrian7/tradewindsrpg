@@ -180,7 +180,7 @@ export const BattleStage: React.FC<BattleStageProps> = ({
             <div className={`relative ${shake === 'enemy' ? 'animate-shake' : ''}`}>
               <ShipArt
                 tier={battle.enemy.tier}
-                variant={battle.rival ? 'syndicate' : 'pirate'}
+                variant={battle.rival ? (battle.rival.id.startsWith('league:') ? 'league' : 'syndicate') : 'pirate'}
                 size="battle"
                 facing="left"
                 damaged={enemyHpPct <= 50}
