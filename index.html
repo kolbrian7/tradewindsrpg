@@ -24,6 +24,24 @@
     <script>
       // The offline cache is only for the published game (https). On a local test server it would
       // keep showing an older copy of the game, so there it is switched off and cleared.
+      // When you come back to the game, check whether a newer version has been published and load it.
+      (function () {
+        if (location.protocol !== 'https:') return;
+        var mine = (document.querySelector('script[type="module"][src]') || {}).src || '';
+        var checking = false;
+        function check() {
+          if (checking || document.visibilityState !== 'visible' || !mine) return;
+          checking = true;
+          fetch('/index.html?fresh=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (html) {
+            var m = html.match(/assets\/index-[A-Za-z0-9_-]+\.js/);
+            if (m && mine.indexOf(m[0]) === -1) location.reload();
+          }).catch(function () {}).then(function () { checking = false; });
+        }
+        document.addEventListener('visibilitychange', check);
+        window.addEventListener('focus', check);
+        setInterval(check, 5 * 60 * 1000);
+      })();
+
       if ('serviceWorker' in navigator) {
         if (location.protocol === 'https:') {
           window.addEventListener('load', () => {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { GameState, RivalDef } from '../game';
-import { SYNDICATE_RIVALS, PORT_TRADE, reputationTier, netWorth, voyageDays, leagueHolds, ownsPort, portPrice, portDailyIncome, portRaided } from '../game';
+import { SYNDICATE_RIVALS, PORT_TRADE, reputationTier, netWorth, voyageDays, leagueHolds, ownsPort, portPrice, portDailyIncome, portRaided, flagshipReady, LEAGUE_FLAGSHIP, isGrandHarbour, PORT_UPGRADES } from '../game';
 import { CommodityIcon, IconCoin, IconLedger, IconScroll, IconSkull, IconStar } from './Icons';
 
 interface LedgerModalProps {
@@ -9,6 +9,7 @@ interface LedgerModalProps {
   onAcceptContract: (id: string) => void;
   onClaimContract: (id: string) => void;
   onBuyPort: () => void;
+  onImprovePort: () => void;
   onHuntRival: (rival: RivalDef) => void;
 }
 
@@ -18,6 +19,7 @@ export const LedgerModal: React.FC<LedgerModalProps> = ({
   onAcceptContract,
   onClaimContract,
   onBuyPort,
+  onImprovePort,
   onHuntRival,
 }) => {
   const [sub, setSub] = useState<'contracts' | 'syndicate' | 'ports'>('contracts');
@@ -153,6 +155,24 @@ export const LedgerModal: React.FC<LedgerModalProps> = ({
               <p className="text-xs text-[#5d4229]">
                 Defeat all four Syndicate captains and amass 50,000 gold to reclaim your family honor. You need both.
               </p>
+              {flagshipReady(g) && (
+                <div className="parchment-card rounded-2xl p-3 space-y-1.5 border-2 border-[#9b251c]">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-display font-black text-sm text-[#2b1d12] flex items-center gap-1.5">
+                        <IconSkull className="w-4 h-4 text-[#9b251c]" /> {LEAGUE_FLAGSHIP.name} · Corsair League
+                      </div>
+                      <div className="text-[11px] font-bold text-[#654b32]">{LEAGUE_FLAGSHIP.shipName} ({LEAGUE_FLAGSHIP.shipClass} · {LEAGUE_FLAGSHIP.hull} HP)</div>
+                    </div>
+                    <span className="text-xs font-black text-[#7d4f0a] flex items-center gap-1"><IconCoin className="w-3.5 h-3.5" /> {LEAGUE_FLAGSHIP.bounty.toLocaleString()}</span>
+                  </div>
+                  <p className="text-[11px] italic text-[#5d4229]">"{LEAGUE_FLAGSHIP.taunt}"</p>
+                  <div className="flex justify-between items-center pt-1">
+                    <span className="text-[10px] font-bold uppercase text-[#6d4918]">Sink her and the League is finished</span>
+                    <button onClick={() => onHuntRival(LEAGUE_FLAGSHIP)} className="btn-crimson px-3 py-1.5 rounded-xl text-[11px] font-black uppercase">Fight</button>
+                  </div>
+                </div>
+              )}
               {SYNDICATE_RIVALS.map(r => {
                 const defeated = player.defeatedRivals.includes(r.id);
                 const unlocked = worth >= r.minWorth;
@@ -209,6 +229,14 @@ export const LedgerModal: React.FC<LedgerModalProps> = ({
                         {p.id === player.currentPortId
                           ? <button onClick={onBuyPort} className="btn-brass px-3 py-1.5 rounded-xl text-[10px] font-black uppercase shrink-0">Buy</button>
                           : <span className="text-[10px] font-bold uppercase text-[#8a7458] shrink-0">Sail there to buy</span>}
+                      </div>
+                    )}
+                    {ownsPort(player, p.id) && !isGrandHarbour(player, p.id) && (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold text-[#146572]">Improvements: {(player.portUpgrades?.[p.id] || []).length}/{PORT_UPGRADES.length}</span>
+                        {p.id === player.currentPortId
+                          ? <button onClick={onImprovePort} className="btn-teal px-3 py-1.5 rounded-xl text-[10px] font-black uppercase shrink-0">Improve</button>
+                          : <span className="text-[10px] font-bold uppercase text-[#8a7458] shrink-0">Sail there to improve</span>}
                       </div>
                     )}
                     {player.hasWonGame && (ownsPort(player, p.id) || leagueHolds(player, p.id)) && (

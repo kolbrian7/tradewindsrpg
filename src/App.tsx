@@ -211,7 +211,7 @@ const App: React.FC = () => {
   const readyRival = SYNDICATE_RIVALS.find(
     r => !player.defeatedRivals.includes(r.id) && worth >= r.minWorth,
   );
-  const ledgerAlert = Boolean(readyContract || readyRival);
+  const ledgerAlert = Boolean(readyContract || readyRival || flagshipReady(g));
   const allRivalsDefeated = SYNDICATE_RIVALS.every(r => player.defeatedRivals.includes(r.id));
   const ownedCount = ports.filter(p => ownsPort(player, p.id)).length;
   const ownsHere = ownsPort(player, currentPort.id);
@@ -1177,7 +1177,7 @@ const App: React.FC = () => {
               {(() => {
                 // The name sits in its own dark capsule; an action (Buy / Free It / Fight) shows as a second colour
                 // behind it, so the pill reads "(VENICE) BUY)" with a pale line along the curve between the two.
-                const fight = !isEditMode && (leagueHere || (flagshipHere && ownsHere));
+                const fight = !isEditMode && leagueHere;
                 const buy = !isEditMode && !fight && player.hasWonGame && !ownsHere;
                 const canBuy = buy && canBuyPort(g, currentPort.id);
                 const improve = !isEditMode && !fight && ownsHere && !isGrandHarbour(player, currentPort.id);
@@ -1202,7 +1202,7 @@ const App: React.FC = () => {
                           setPillPressed(true);
                           setTimeout(() => {
                             setPillPressed(false);
-                            if (fight) handleHuntRival(leagueHere ? leagueCaptain(currentPort) : LEAGUE_FLAGSHIP);
+                            if (fight) handleHuntRival(leagueCaptain(currentPort));
                             else if (improve) setPortWorks(true);
                             else setPortOffer(true);
                           }, 230);
@@ -1210,7 +1210,7 @@ const App: React.FC = () => {
                         style={{ transition: 'padding 200ms cubic-bezier(.2,1.6,.4,1), font-size 200ms cubic-bezier(.2,1.6,.4,1)' }}
                         className={`font-display font-black uppercase tracking-wider ${pillPressed ? 'pl-4 pr-7 text-[16px]' : 'pl-2.5 pr-3.5 text-[12px]'} ${fight || improve ? 'text-white' : canBuy ? 'text-[#3a2206]' : 'text-[#fff1cf]'}`}
                       >
-                        {fight ? (leagueHere ? 'Free It' : 'Fight') : improve ? 'Improve' : 'Buy'}
+                        {fight ? 'Free It' : improve ? 'Improve' : 'Buy'}
                       </button>
                     )}
                   </div>
@@ -1234,6 +1234,8 @@ const App: React.FC = () => {
                     <p className="text-xs font-semibold text-[#2b1d12] leading-snug">
                       {readyContract
                         ? `Deliver ${readyContract.amount} ${readyContract.good} for ${readyContract.rewardGold.toLocaleString()} gold!`
+                        : flagshipHere
+                          ? "The League's flagship, the Black Tide, is hunting you. Fight it from your Ledger when you are ready."
                         : hullLow && !leagueHere
                           ? 'Your hull is dangerously low. Repair at the Shipyard before sailing.'
                         : ownsHere
@@ -1813,6 +1815,7 @@ const App: React.FC = () => {
           onAcceptContract={handleAcceptContract}
           onClaimContract={handleClaimContract}
           onBuyPort={() => { audioManager.playSfx('click'); setLedgerOpen(false); setPortOffer(true); }}
+          onImprovePort={() => { audioManager.playSfx('click'); setLedgerOpen(false); setPortWorks(true); }}
           onHuntRival={handleHuntRival}
         />
       )}
