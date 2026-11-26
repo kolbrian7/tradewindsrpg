@@ -1,0 +1,116 @@
+{
+ "port": {
+  "len": 50,
+  "layers": [
+   {
+    "file": "2024/Jake Fielding - Industrial Harbor/WATRWave_Water Lapping against port_Jake Fielding_Industrial Harbor.wav",
+    "start": 10,
+    "gain_db": 0,
+    "loop": false
+   },
+   {
+    "file": "2024/Rogue Waves - Yacht & Marina/AMBNaut_Atmos, EXT Marina, boats, rope creaking,_RogueWaves_YachtMarina_11.wav",
+    "start": 10,
+    "gain_db": -3,
+    "loop": false
+   }
+  ]
+ },
+ "market": {
+  "len": 45,
+  "layers": [
+   {
+    "file": "2026/Sonik Sound Library - Spanish Wallas/CRWDWalla_Crowd, Walla, Dense Immersive Group of Adults, After or Befor a Show, Exterior, Spanish-Stereo_KSL_KS014.wav",
+    "start": 5,
+    "gain_db": 0,
+    "loop": false
+   },
+   {
+    "file": "2024/Jake Fielding - Industrial Harbor/WATRWave_Water Lapping against port_Jake Fielding_Industrial Harbor.wav",
+    "start": 30,
+    "gain_db": -12,
+    "loop": false
+   },
+   {
+    "file": "2024/Rogue Waves - Yacht & Marina/AMBNaut_Atmos, EXT Marina, boats, rope creaking,_RogueWaves_YachtMarina_11.wav",
+    "start": 55,
+    "gain_db": -14,
+    "loop": false
+   }
+  ]
+ },
+ "shipyard": {
+  "len": 50,
+  "layers": [
+   {
+    "file": "2024/Jake Fielding - Circus Ambiences/AMBCnst_Hammering, Tools, Tent, Reverb_JF_Circus.wav",
+    "start": 20,
+    "gain_db": 0,
+    "loop": false
+   },
+   {
+    "file": "2024/Jake Fielding - Industrial Harbor/WATRWave_Water Lapping against port_Jake Fielding_Industrial Harbor.wav",
+    "start": 50,
+    "gain_db": -8,
+    "loop": false
+   },
+   {
+    "file": "2024/Rogue Waves - Yacht & Marina/AMBNaut_Atmos, EXT Marina, boats, rope creaking,_RogueWaves_YachtMarina_11.wav",
+    "start": 40,
+    "gain_db": -8,
+    "loop": false
+   }
+  ]
+ },
+ "cantina": {
+  "len": 55,
+  "layers": [
+   {
+    "file": "2024/Sculptunes - Rome - Urban City Surround/AMBRest_Rome_Indoor-PubCrowd-InteriorCrowd.wav",
+    "start": 30,
+    "gain_db": 0,
+    "loop": false
+   }
+  ]
+ },
+ "sea": {
+  "len": 45,
+  "layers": [
+   {
+    "file": "2024/Rogue Waves - Yacht & Marina/BOATInt_Atmos, INT Small yacht cabin, hatch open,_RogueWaves_YachtMarina.wav",
+    "start": 10,
+    "gain_db": 0,
+    "loop": false
+   },
+   {
+    "file": "2026/Epic Stock Media - Synthesized Nature Loops and Sounds/WINDInt_Loop Weather Wind Whipping Constricted Flow Turbulent 01_ESM_SNLS.wav",
+    "start": 0,
+    "gain_db": -10,
+    "loop": true
+   },
+   {
+    "file": "2026/Just Sound Effects - Rocky Coast of Norway/WATRWave_Soft Waves Cliffs_JSE_RCoN_Stereo.wav",
+    "start": 20,
+    "gain_db": -14,
+    "loop": false
+   }
+  ]
+ },
+ "battle": {
+  "len": 45,
+  "layers": [
+   {
+    "file": "2024/Nick McMahan - Cascadia Shore Waves/WATRSurf_Ocean Medium to Large Rocks 02 Loop_Cascadia Shore Waves.wav",
+    "start": 20,
+    "gain_db": 0,
+    "loop": false
+   },
+   {
+    "file": "2026/344 Audio - Extreme Winds Vol. 1/WINDDsgn_EXT, Eye Of The Storm_344 Audio_Extreme Winds Vol 1.wav",
+    "start": 30,
+    "gain_db": -6,
+    "loop": false
+   }
+  ]
+ }
+}

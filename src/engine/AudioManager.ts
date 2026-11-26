@@ -1,7 +1,7 @@
 class SynthSounds {
   private static ctx: AudioContext | null = null;
 
-  private static getContext(): AudioContext {
+  public static getContext(): AudioContext {
     if (!this.ctx) {
       this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
@@ -182,18 +182,118 @@ class SynthSounds {
   }
 }
 
+/** Background sound for each place: one long loop per scene, faded in and out as you move around.
+ *  Files live in /assets/sounds/amb/<scene>.mp3. Only the last few loops stay decoded, to spare phone memory. */
+export type AmbienceScene = 'port' | 'market' | 'shipyard' | 'cantina' | 'sea' | 'battle';
+const AMBIENCE_LEVEL: Record<AmbienceScene, number> = { port: 0.55, market: 0.5, shipyard: 0.5, cantina: 0.5, sea: 0.55, battle: 0.6 };
+const AMBIENCE_FADE = 1.4;      // seconds
+const AMBIENCE_KEEP = 3;        // decoded loops kept in memory
+
+class Ambience {
+  private master: GainNode | null = null;
+  private buffers = new Map<AmbienceScene, Promise<AudioBuffer | null>>();
+  private playing: { scene: AmbienceScene; src: AudioBufferSourceNode; gain: GainNode } | null = null;
+  private wanted: AmbienceScene | null = null;
+  private muted = false;
+
+  private out(): GainNode {
+    const ctx = SynthSounds.getContext();
+    if (!this.master) {
+      this.master = ctx.createGain();
+      this.master.gain.value = this.muted ? 0 : 1;
+      this.master.connect(ctx.destination);
+    }
+    return this.master;
+  }
+
+  private load(scene: AmbienceScene): Promise<AudioBuffer | null> {
+    let b = this.buffers.get(scene);
+    if (!b) {
+      b = fetch(`/assets/sounds/amb/${scene}.mp3`)
+        .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
+        .then(data => SynthSounds.getContext().decodeAudioData(data))
+        .catch(() => null);
+      this.buffers.set(scene, b);
+      // forget the oldest loops (never the one playing or wanted)
+      for (const key of [...this.buffers.keys()]) {
+        if (this.buffers.size <= AMBIENCE_KEEP) break;
+        if (key !== scene && key !== this.playing?.scene && key !== this.wanted) this.buffers.delete(key);
+      }
+    }
+    return b;
+  }
+
+  public set(scene: AmbienceScene | null) {
+    if (scene === this.wanted) return;
+    this.wanted = scene;
+    let ctx: AudioContext;
+    try { ctx = SynthSounds.getContext(); } catch { return; }
+    if (this.playing) {
+      const { src, gain } = this.playing;
+      const now = ctx.currentTime;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(gain.gain.value, now);
+      gain.gain.linearRampToValueAtTime(0, now + AMBIENCE_FADE);
+      try { src.stop(now + AMBIENCE_FADE + 0.05); } catch { /* already stopped */ }
+      this.playing = null;
+    }
+    if (!scene) return;
+    this.load(scene).then(buf => {
+      if (!buf || this.wanted !== scene || this.playing) return;
+      const now = ctx.currentTime;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      // MP3 adds a few silent milliseconds at both ends; loop just inside them so there is no gap.
+      src.loopStart = 0.06;
+      src.loopEnd = buf.duration - 0.06;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(AMBIENCE_LEVEL[scene], now + AMBIENCE_FADE);
+      src.connect(gain);
+      gain.connect(this.out());
+      // start somewhere inside the loop so returning to a place doesn't always replay the same moment
+      src.start(now, 0.06 + Math.random() * (buf.duration - 0.2));
+      this.playing = { scene, src, gain };
+    });
+  }
+
+  public setMuted(muted: boolean) {
+    this.muted = muted;
+    if (!this.master) return;
+    const now = SynthSounds.getContext().currentTime;
+    this.master.gain.cancelScheduledValues(now);
+    this.master.gain.setValueAtTime(this.master.gain.value, now);
+    this.master.gain.linearRampToValueAtTime(muted ? 0 : 1, now + 0.3);
+  }
+}
+
 class AudioManager {
   private static instance: AudioManager;
   private isMuted: boolean = false;
   private bgmAudio: HTMLAudioElement | null = null;
   private currentBgmName: string = '';
+  private ambience = new Ambience();
 
   private constructor() {
     const savedMute = localStorage.getItem('tradewinds_audio_muted');
     if (savedMute !== null) {
       this.isMuted = savedMute === 'true';
     }
+    this.ambience.setMuted(this.isMuted);
     this.setupUnlockListeners();
+    // Phones keep playing web audio in a background tab; stop when the game is out of sight.
+    document.addEventListener('visibilitychange', () => {
+      try {
+        const ctx = SynthSounds.getContext();
+        if (document.hidden) ctx.suspend(); else ctx.resume();
+      } catch { /* no audio */ }
+    });
+  }
+
+  /** Background sound for the place you are in (null for silence). */
+  public setAmbience(scene: AmbienceScene | null) {
+    this.ambience.set(scene);
   }
 
   private setupUnlockListeners() {
@@ -223,6 +323,7 @@ class AudioManager {
   public toggleMute(): boolean {
     this.isMuted = !this.isMuted;
     localStorage.setItem('tradewinds_audio_muted', String(this.isMuted));
+    this.ambience.setMuted(this.isMuted);
     
     if (this.isMuted) {
       if (this.bgmAudio) {

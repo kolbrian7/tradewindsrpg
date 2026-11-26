@@ -16,7 +16,7 @@ import {
   IconLedger, IconCoin, IconMenu, IconSound, IconScroll, IconStar, IconSkull,
   IconChevronLeft, IconChevronRight, IconWind,
 } from './components/Icons';
-import { audioManager } from './engine/AudioManager';
+import { audioManager, type AmbienceScene } from './engine/AudioManager';
 import {
   GOAL, COMMODITIES, BASE_PRICES, PORT_TRADE, SHIP_CLASSES, REPAIR_COST_PER_POINT,
   OFFICERS, ESCORTS, SYNDICATE_RIVALS,
@@ -214,6 +214,16 @@ const App: React.FC = () => {
     r => !player.defeatedRivals.includes(r.id) && worth >= r.minWorth,
   );
   const ledgerAlert = Boolean(readyContract || readyRival || flagshipReady(g));
+
+  // Background sound follows where you are: the intro video has its own soundtrack, so nothing plays under it.
+  const ambience: AmbienceScene | null = !player.hasReadPrologue ? null
+    : tab === 'battle' ? 'battle'
+    : isTraveling ? 'sea'
+    : tab === 'market' ? 'market'
+    : tab === 'ship' ? 'shipyard'
+    : tab === 'cantina' ? 'cantina'
+    : 'port';
+  useEffect(() => { audioManager.setAmbience(ambience); }, [ambience]);
   const allRivalsDefeated = SYNDICATE_RIVALS.every(r => player.defeatedRivals.includes(r.id));
   const ownedCount = ports.filter(p => ownsPort(player, p.id)).length;
   const ownsHere = ownsPort(player, currentPort.id);
