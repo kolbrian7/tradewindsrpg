@@ -5,7 +5,7 @@ class SynthSounds {
     if (!this.ctx) {
       this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
-    if (this.ctx.state === 'suspended') {
+    if (this.ctx.state !== 'running' && !document.hidden) {
       this.ctx.resume();
     }
     return this.ctx;
@@ -185,7 +185,9 @@ class SynthSounds {
 /** Background sound for each place: one long loop per scene, faded in and out as you move around.
  *  Files live in /assets/sounds/amb/<scene>.mp3. Only the last few loops stay decoded, to spare phone memory. */
 export type AmbienceScene = 'port' | 'market' | 'shipyard' | 'cantina' | 'sea' | 'battle';
-const AMBIENCE_LEVEL: Record<AmbienceScene, number> = { port: 0.55, market: 0.5, shipyard: 0.5, cantina: 0.5, sea: 0.55, battle: 0.6 };
+// Each loop file is about -24 LUFS (measured); these gains bring every place to about -21 LUFS (battle -20), a few dB
+// under the intro video (-16) and the same loudness everywhere. A limiter on the output catches the peaks.
+const AMBIENCE_LEVEL: Record<AmbienceScene, number> = { port: 1.36, market: 1.5, shipyard: 1.62, cantina: 1.62, sea: 1.5, battle: 1.58 };
 const AMBIENCE_FADE = 1.4;      // seconds
 const AMBIENCE_KEEP = 3;        // decoded loops kept in memory
 
@@ -201,7 +203,14 @@ class Ambience {
     if (!this.master) {
       this.master = ctx.createGain();
       this.master.gain.value = this.muted ? 0 : 1;
-      this.master.connect(ctx.destination);
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -4;
+      limiter.knee.value = 2;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.003;
+      limiter.release.value = 0.25;
+      this.master.connect(limiter);
+      limiter.connect(ctx.destination);
     }
     return this.master;
   }
@@ -281,6 +290,9 @@ class AudioManager {
       this.isMuted = savedMute === 'true';
     }
     this.ambience.setMuted(this.isMuted);
+    // iPhones silence web audio when the ring switch is on silent, though the intro video still plays. Ask for
+    // media playback so the game sounds like the video does (Safari 17+; ignored elsewhere).
+    try { const s = (navigator as any).audioSession; if (s) s.type = 'playback'; } catch { /* not supported */ }
     this.setupUnlockListeners();
     // Phones keep playing web audio in a background tab; stop when the game is out of sight.
     document.addEventListener('visibilitychange', () => {
@@ -306,11 +318,15 @@ class AudioManager {
         this.bgmAudio.play().catch(() => {});
       }
 
-      // Clean up event listener - click is universally supported on iOS/Android as user gesture
-      window.removeEventListener('click', unlock);
     };
-
-    window.addEventListener('click', unlock);
+    // Keep listening: phones stop the audio after a call, the lock screen or switching apps, and it only comes
+    // back on a tap. Each tap wakes it if it went to sleep.
+    const wake = () => {
+      try { if (SynthSounds.getContext().state !== 'running') unlock(); } catch { /* no audio */ }
+    };
+    window.addEventListener('click', unlock, { once: true });
+    window.addEventListener('pointerdown', wake);
+    window.addEventListener('touchend', wake);
   }
 
   public static getInstance(): AudioManager {
