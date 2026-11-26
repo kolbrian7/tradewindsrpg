@@ -23,7 +23,7 @@ import {
   loadGame, saveGame, clearSave, buyGoods, sellGoods, buyPrice, sellPrice, cargoCount, netWorth, rankFor,
   advanceDays, learnRumor, voyageDays, rollAmbush, rollWeather, routeTip, tradeRole, emptyCargo, pickMinigame,
   PIRATE_REP, REP_STEPS, sellRepGain,
-  LEAGUE_NAME, LEAGUE_FLAGSHIP, leagueHolds, leagueCaptain, isLeagueRival, flagshipReady, leagueTick, leagueBeaten,
+  LEAGUE_NAME, LEAGUE_FLAGSHIP, LEAGUE_LOSS_GOLD, leagueSeizeTarget, leagueSeize, leagueHolds, leagueCaptain, isLeagueRival, flagshipReady, leagueTick, leagueBeaten,
   buyTrader, setTraderRoute, upgradeTrader, advanceTraders, traderLeg, MAX_TRADERS, TRADER_CLASSES,
   BRIBE_MIN_REP, bribeCost, canBribePort, bribeForPort,
   PORT_UPGRADES, portHas, portUpgradeCost, isGrandHarbour, buyPortUpgrade,
@@ -139,6 +139,7 @@ const App: React.FC = () => {
   const [repOpen, setRepOpen] = useState(false);
   const [pillPressed, setPillPressed] = useState(false);
   const [portWorks, setPortWorks] = useState(false);
+  const [takeAsk, setTakeAsk] = useState<RivalDef | null>(null);   // a League fight waiting for you to accept the stakes
   const payRef = useRef({ ports: 0, ships: 0 });
   const [yardOpen, setYardOpen] = useState<string | null>('flagship');
   const [toast, setToast] = useState<string | null>(null);
@@ -363,7 +364,7 @@ const App: React.FC = () => {
   const yardShut = () => {
     if (!leagueHolds(gRef.current.player, gRef.current.player.currentPortId)) return false;
     audioManager.playSfx('click');
-    say('The League has closed this shipyard to you. Free the harbour first.');
+    say('The League has closed this shipyard to you. Take the harbour first.');
     return true;
   };
 
@@ -796,7 +797,7 @@ const App: React.FC = () => {
       setG(prev => ({ ...prev, player: leagueBeaten(prev.player, rid) }));
       setTimeout(() => setNotice(rid === LEAGUE_FLAGSHIP.id
         ? { title: 'The League Is Broken', body: 'The Black Tide is sunk and Admiral Mora with it. The League scatters, and every harbour it held is back on the market.' }
-        : { title: 'Harbour Freed', body: `${b.rival!.name} strikes his colours. This harbour is free of the League and its Harbor Master will deal with you again.` }), 2400);
+        : { title: 'Harbour Taken', body: `${b.rival!.name} strikes his colours. The harbour is yours now: your flag flies over it and it pays you every day.` }), 2400);
     }
 
     const cargoLine = taken > 0
@@ -817,7 +818,10 @@ const App: React.FC = () => {
     updateBattle({ phase: 'lost', tone: 'bad', log: 'Your hull breaks under their broadside. Pirates swarm the deck.' });
     setTimeout(() => {
       const before = gRef.current.player;
-      const goldTaken = Math.floor(before.gold * 0.28);
+      const vsLeague = Boolean(b.rival && isLeagueRival(b.rival));
+      const seizedId = vsLeague ? leagueSeizeTarget(before) : null;
+      const seizedName = gRef.current.ports.find(p => p.id === seizedId)?.name;
+      const goldTaken = Math.floor(before.gold * (vsLeague ? LEAGUE_LOSS_GOLD : 0.28));
       const goldLeft = Math.max(100, before.gold - goldTaken);
       const origin = gRef.current.ports.find(p => p.id === b.originId);
       setG(prev => {
@@ -825,7 +829,7 @@ const App: React.FC = () => {
         return advanceDays({
           ...prev,
           player: {
-            ...prev.player,
+            ...(vsLeague ? leagueSeize(prev.player) : prev.player),
             gold: goldLeft,
             cargo: emptyCargo(),
             paid: emptyCargo(),
@@ -839,7 +843,10 @@ const App: React.FC = () => {
       setBattle(null);
       setTargetPortId(null);
       setTab('port');
-      setNotice({
+      setNotice(vsLeague ? {
+        title: 'Beaten by the League',
+        body: `Your hull was towed back to ${origin?.name || 'port'}. The League took ${(before.gold - goldLeft).toLocaleString()} gold and your cargo${seizedName ? `, and its ships have seized ${seizedName}. It is theirs until you take it back` : ''}.`,
+      } : {
         title: 'Towed back to port',
         body: `Fishermen towed your battered hull back to ${origin?.name || 'port'}. Raiders seized your cargo${before.gold - goldLeft > 0 ? ` and ${(before.gold - goldLeft).toLocaleString()} gold` : ''}.`,
       });
@@ -969,6 +976,7 @@ const App: React.FC = () => {
   const handleFlee = () => {
     const b = battleRef.current;
     if (!b || b.phase !== 'player') return;
+    if (b.rival && isLeagueRival(b.rival)) return;   // you chose this fight; the League does not let you leave it
     audioManager.playSfx('sail');
     if (rollFlee(gRef.current.player, b.enemy, b.enemyCrippledTurns > 0)) {
       updateBattle({ phase: 'escaped', tone: 'good', log: 'You catch a clean Mediterranean gust and leave them astern!' });
@@ -1214,7 +1222,7 @@ const App: React.FC = () => {
                           setPillPressed(true);
                           setTimeout(() => {
                             setPillPressed(false);
-                            if (fight) handleHuntRival(leagueCaptain(currentPort));
+                            if (fight) setTakeAsk(leagueCaptain(currentPort));
                             else if (improve) setPortWorks(true);
                             else setPortOffer(true);
                           }, 230);
@@ -1222,7 +1230,7 @@ const App: React.FC = () => {
                         style={{ transition: 'padding 200ms cubic-bezier(.2,1.6,.4,1), font-size 200ms cubic-bezier(.2,1.6,.4,1)' }}
                         className={`font-display font-black uppercase tracking-wider ${pillPressed ? 'pl-4 pr-7 text-[16px]' : 'pl-2.5 pr-3.5 text-[12px]'} ${fight || improve ? 'text-white' : canBuy ? 'text-[#3a2206]' : 'text-[#fff1cf]'}`}
                       >
-                        {fight ? 'Free It' : improve ? 'Improve' : 'Buy'}
+                        {fight ? 'Take It' : improve ? 'Improve' : 'Buy'}
                       </button>
                     )}
                   </div>
@@ -1657,7 +1665,7 @@ const App: React.FC = () => {
                     {leagueHere && (
                       <div className="rounded-2xl border-2 border-[#9b251c] bg-[#2a1210] px-3 py-2.5 text-center">
                         <div className="font-display font-black uppercase tracking-wider text-sm text-[#f06458]">Shipyard Closed</div>
-                        <div className="text-[11px] font-bold text-[#e8d5b0]">The League holds this harbour. No repairs, upgrades, new ships or hiring here until you free it.</div>
+                        <div className="text-[11px] font-bold text-[#e8d5b0]">The League holds this harbour. No repairs, upgrades, new ships or hiring here until you take it.</div>
                       </div>
                     )}
                     <FleetCard
@@ -1833,8 +1841,9 @@ const App: React.FC = () => {
           onAcceptContract={handleAcceptContract}
           onClaimContract={handleClaimContract}
           onBuyPort={() => { audioManager.playSfx('click'); setLedgerOpen(false); setPortOffer(true); }}
+          onTakePort={() => { audioManager.playSfx('click'); setLedgerOpen(false); setTakeAsk(leagueCaptain(currentPort)); }}
           onImprovePort={() => { audioManager.playSfx('click'); setLedgerOpen(false); setPortWorks(true); }}
-          onHuntRival={handleHuntRival}
+          onHuntRival={r => { if (isLeagueRival(r)) { audioManager.playSfx('click'); setLedgerOpen(false); setTakeAsk(r); } else handleHuntRival(r); }}
         />
       )}
 
@@ -2030,6 +2039,31 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* LEAGUE FIGHT: the stakes, before you commit */}
+      {takeAsk && (() => {
+        const flagshipFight = takeAsk.id === LEAGUE_FLAGSHIP.id;
+        const seizeName = ports.find(p => p.id === leagueSeizeTarget(player))?.name;
+        return (
+          <div className="absolute inset-0 bg-[#0c161f]/85 z-50 flex items-center justify-center p-5 anim-fade" onClick={() => setTakeAsk(null)}>
+            <div className="parchment p-5 rounded-3xl w-full max-w-sm text-center space-y-3" onClick={e => e.stopPropagation()}>
+              <h2 className="font-display text-xl font-black uppercase text-[#9b251c]">{flagshipFight ? 'Fight the Black Tide?' : `Take ${currentPort.name}?`}</h2>
+              <p className="text-xs text-[#2b1d12]">{takeAsk.name} in {takeAsk.shipName}: {takeAsk.hull} hull, {takeAsk.firepower} guns. You have {flagship.hullHealth.current} hull and {totalFirepower(player)} guns. This is a hard fight.</p>
+              <div className="parchment-card rounded-xl p-3 space-y-1.5 text-xs font-bold text-left text-[#2b1d12]">
+                <div><span className="text-[#146572]">Win:</span> {flagshipFight ? 'the League is finished for good' : `${currentPort.name} is yours, free`}, plus {takeAsk.bounty.toLocaleString()} gold.</div>
+                <div><span className="text-[#9b251c]">Lose:</span> half your gold, all your cargo{seizeName ? `, and the League seizes ${seizeName}, your richest harbour` : ''}.</div>
+              </div>
+              <button
+                onClick={() => { const r = takeAsk; setTakeAsk(null); handleHuntRival(r); }}
+                className="w-full btn-crimson py-3 rounded-xl font-display font-black uppercase tracking-wider text-xs"
+              >
+                Fight
+              </button>
+              <button onClick={() => setTakeAsk(null)} className="w-full btn-teal py-2.5 rounded-xl font-display font-black uppercase tracking-wider text-xs">Not Yet</button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* SECOND CHAPTER: BUY THIS HARBOUR */}
       {portOffer && (() => {

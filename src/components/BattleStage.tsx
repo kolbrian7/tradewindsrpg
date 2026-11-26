@@ -335,10 +335,10 @@ export const BattleStage: React.FC<BattleStageProps> = ({
             <div className="grid grid-cols-3 gap-2">
               <button
                 onClick={onFlee}
-                disabled={battle.phase !== 'player'}
+                disabled={battle.phase !== 'player' || Boolean(battle.rival?.id.startsWith('league:'))}
                 className="bg-[#2c1c12] border border-[#967038]/50 text-[#f2e2c2] disabled:opacity-40 py-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 active:scale-95"
               >
-                <IconWind className="w-3.5 h-3.5" /> Flee {Math.round(fleeChance(player, battle.enemy, battle.enemyCrippledTurns > 0) * 100)}%
+                <IconWind className="w-3.5 h-3.5" /> {battle.rival?.id.startsWith('league:') ? 'No Escape' : `Flee ${Math.round(fleeChance(player, battle.enemy, battle.enemyCrippledTurns > 0) * 100)}%`}
               </button>
               <button
                 onClick={onTribute}

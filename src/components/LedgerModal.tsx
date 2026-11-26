@@ -9,6 +9,7 @@ interface LedgerModalProps {
   onAcceptContract: (id: string) => void;
   onClaimContract: (id: string) => void;
   onBuyPort: () => void;
+  onTakePort: () => void;
   onImprovePort: () => void;
   onHuntRival: (rival: RivalDef) => void;
 }
@@ -19,6 +20,7 @@ export const LedgerModal: React.FC<LedgerModalProps> = ({
   onAcceptContract,
   onClaimContract,
   onBuyPort,
+  onTakePort,
   onImprovePort,
   onHuntRival,
 }) => {
@@ -239,12 +241,20 @@ export const LedgerModal: React.FC<LedgerModalProps> = ({
                           : <span className="text-[10px] font-bold uppercase text-[#8a7458] shrink-0">Sail there to improve</span>}
                       </div>
                     )}
+                    {leagueHolds(player, p.id) && (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold text-[#9b251c]">Not for sale. Beat its captain to take it.</span>
+                        {p.id === player.currentPortId
+                          ? <button onClick={onTakePort} className="btn-crimson px-3 py-1.5 rounded-xl text-[10px] font-black uppercase shrink-0">Take It</button>
+                          : <span className="text-[10px] font-bold uppercase text-[#8a7458] shrink-0">Sail there to fight</span>}
+                      </div>
+                    )}
                     {player.hasWonGame && (ownsPort(player, p.id) || leagueHolds(player, p.id)) && (
                       <div className="text-[11px] font-bold text-[#7d4f0a]">
                         {ownsPort(player, p.id)
                           ? (portRaided(player, p.id) ? '⚑ Yours · raided, paying nothing for now' : `⚑ Yours · ${portDailyIncome(p.id, player).toLocaleString()} gold a day`)
                           : leagueHolds(player, p.id)
-                            ? '⚑ Held by the Corsair League. Beat its captain there to free it.'
+                            ? '⚑ Held by the Corsair League'
                             : `For sale: ${portPrice(p.id).toLocaleString()} gold, Patron standing needed`}
                       </div>
                     )}

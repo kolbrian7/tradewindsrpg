@@ -843,14 +843,15 @@ export const leagueCaptain = (port: Port): RivalDef => {
   const [name, shipName] = LEAGUE_CAPTAINS[port.id] || ['A League Captain', 'The Black Sail'];
   return {
     id: `league:${port.id}`, name, shipName, shipClass: 'Galleon', tier: 4,
-    hull: 150 + Math.round(price / 1000), firepower: 11 + Math.round(price / 20000), speed: 10,
+    // Tuned so a fully built Galleon with two escorts and a gunner wins about half the time with sharp aim.
+    hull: 350 + Math.round(price / 1000), firepower: 21 + Math.round(price / 60000), speed: 10,
     minWorth: 0, watersPortId: port.id, bounty: Math.round(price * 0.15), lootGood: 'Silk', lootAmount: 6,
     taunt: `${port.name} belongs to the League now. Sail on, merchant.`,
   };
 };
 export const LEAGUE_FLAGSHIP: RivalDef = {
   id: 'league:flagship', name: 'Admiral Mora', shipName: 'The Black Tide', shipClass: 'Galleon', tier: 4,
-  hull: 250, firepower: 16, speed: 11, minWorth: 0, watersPortId: '', bounty: 40000, lootGood: 'Gems', lootAmount: 8,
+  hull: 450, firepower: 23, speed: 11, minWorth: 0, watersPortId: '', bounty: 40000, lootGood: 'Gems', lootAmount: 8,
   taunt: 'You buy harbours with coin. I take them with iron.',
 };
 export const isLeagueRival = (r?: RivalDef | null) => Boolean(r && r.id.startsWith('league:'));
@@ -884,7 +885,7 @@ export const leagueTick = (g: GameState): GameState => {
         .sort((a, b) => portPrice(a.id) - portPrice(b.id));
       if (open[0]) {
         lg = { ...lg, ports: { ...lg.ports, [open[0].id]: day } };
-        news.push(`The League has bought ${open[0].name}. Prices there are worse for you and its shipyard is closed to you until you beat the captain guarding it.`);
+        news.push(`The League has bought ${open[0].name}. It is no longer for sale, prices there are worse for you and its shipyard is closed. Beat the captain guarding it and the harbour is yours.`);
       }
       const target = mine.filter(x => x.id !== p.currentPortId && !portHas(p, x.id, 'fort') && (owned[x.id] ?? 0) <= day)
         .sort((x, y) => portDailyIncome(y.id, p) - portDailyIncome(x.id, p))[0];
@@ -900,12 +901,26 @@ export const leagueTick = (g: GameState): GameState => {
 };
 
 /** What beating a League ship does: a guard captain frees their harbour; the flagship ends the League. */
+/** Losing to the League costs far more than losing to pirates: this share of your gold... */
+export const LEAGUE_LOSS_GOLD = 0.5;
+/** ...and the richest harbour you own, which the League seizes (its improvements go with it). */
+export const leagueSeizeTarget = (p: Player): string | null =>
+  Object.keys(p.ownedPorts || {}).sort((a, b) => portDailyIncome(b, p) - portDailyIncome(a, p))[0] || null;
+export const leagueSeize = (p: Player): Player => {
+  const id = leagueSeizeTarget(p);
+  if (!id) return p;
+  const owned = { ...p.ownedPorts };
+  delete owned[id];
+  return { ...p, ownedPorts: owned, league: { ...p.league, ports: { ...p.league.ports, [id]: p.gameDay } } };
+};
+
 export const leagueBeaten = (p: Player, rivalId: string): Player => {
   if (rivalId === LEAGUE_FLAGSHIP.id) return { ...p, league: { ...p.league, defeated: true, ports: {}, news: [] } };
   const portId = rivalId.slice('league:'.length);
   const ports = { ...p.league.ports };
   delete ports[portId];
-  return { ...p, league: { ...p.league, ports, freed: { ...p.league.freed, [portId]: p.gameDay } } };
+  // Beat the captain guarding a harbour and you take it over: it is yours, with no price to pay.
+  return { ...p, ownedPorts: { ...p.ownedPorts, [portId]: p.gameDay }, league: { ...p.league, ports, freed: { ...p.league.freed, [portId]: p.gameDay } } };
 };
 
 export const acceptContract = (g: GameState, contractId: string): GameState => {
